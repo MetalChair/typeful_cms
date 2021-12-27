@@ -1,7 +1,7 @@
 import Modal from './components/Modal'
 import './index.css'
 import {HashRouter, Route, Routes} from "react-router-dom"
-import Layout from './layout'
+import Layout from './Layout'
 
 function App() {
 
