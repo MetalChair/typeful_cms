@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+#root{
+  @apply w-full h-full;
+}
+html, body {
+  @apply h-full m-0;
+}
+.nav-item {
+  @apply flex gap-2 flex-row items-center w-full p-3 hover:bg-gray-200 text-lg;
+}
+.nav-icon{
+  @apply w-8 h-8 bg-red-500 text-white flex rounded-md items-center justify-center;
+}
