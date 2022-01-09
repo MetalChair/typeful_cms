@@ -15,5 +15,3 @@ def create_new_model_endpoint():
 
 def setup_model_in_db(model):
     return
-
-def does_model_with
