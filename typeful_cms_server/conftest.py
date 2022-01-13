@@ -14,8 +14,6 @@ def test_app() -> AppContext:
     app = init_app()
     app.config.from_file("config_test.json", json.load) #Load the testing config
     with app.app_context() as context:
-        g.db = psycopg2.connect("dbname=typeful_test user=newserver")
+        g.db = psycopg2.connect("dbname=typeful_test user=typefulserver")
         scaffold_db(g.db)
         yield context
-    #After the test has executed, remove the testing db
-    os.remove("db/testing.db")

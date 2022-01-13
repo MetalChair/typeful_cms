@@ -1,8 +1,9 @@
 create table if not exists typeful_routes (
     id serial PRIMARY KEY NOT NULL,
     route TEXT NOT NULL,
-    schema TEXT NOT NULL,
-    return TEXT
+    name TEXT NOT NULL,
+    tabel_name TEXT NOT NULL,
+    model_def TEXT
 );
 create table if not exists app_definition (
     id serial PRIMARY KEY NOT NULL,
