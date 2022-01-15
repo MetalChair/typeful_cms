@@ -5,8 +5,9 @@ from flask.ctx import AppContext
 import pytest
 import psycopg2
 import json
+from typeful_cms_server import config
 from typeful_cms_server.application import init_app
-from typeful_cms_server.application.database import scaffold_db
+from typeful_cms_server.application.database import get_db, get_db_cursor, scaffold_db
 
 @pytest.fixture
 def test_app() -> AppContext:
@@ -17,3 +18,11 @@ def test_app() -> AppContext:
         g.db = psycopg2.connect("dbname=typeful_test user=typefulserver")
         scaffold_db(g.db)
         yield context
+        db = get_db()
+        cur = db.cursor()
+        #Drop all tables after test is complete
+        with open(config.DB_TEARDOWN_PATH, 'r') as sql_file:
+            sql_script = sql_file.read()
+        cur.execute(sql_script)
+        db.commit()
+        

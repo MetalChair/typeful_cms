@@ -1,13 +1,19 @@
+from os import curdir, truncate
 import sqlite3
+import enum
+import psycopg2
 from typing import Tuple
 from flask import g
-import psycopg2
 from psycopg2 import sql
-from typeful_cms_server import config 
+from werkzeug.wrappers import request
+from typeful_cms_server import config
 
 
 DATABASE = "db/typeful.db"
 VALID_DB_TYPES = ["TEXT", "DATE", "JSON", "BOOLEAN", "UUID", "INTEGER"]
+class DB_ACTION_TYPE(enum.Enum):
+    CREATE = 1
+    UPDATE = 2
 
 def get_db():
     if 'db' not in g:
@@ -41,31 +47,42 @@ def scaffold_db(db):
 
     db.autocommit = False
 
-def create_model_database(schema : Tuple[str, str, bool], table_name: str):
-    '''
-        Takes a list of tuples <name, type, nullable?> and a table name and
-        creates a table in the db with that schema
-    '''
+def perform_db_model_action(
+    action : DB_ACTION_TYPE, schema : Tuple[str, str, bool], table_name: str):
     db = get_db()
     cur = get_db_cursor()
-    schema_list = []
-    param_list = []
-    for item in schema:
-        new_line = get_column_creation_line(item)
-        if new_line is not None:
-            schema_list.append(new_line)
-    create_table_model = sql.SQL(
-        "CREATE TABLE {table_name} ({query_list})"
-        ).format(
-            table_name = sql.Identifier(table_name),
-            query_list = sql.SQL(', ').join(x for x in schema_list)
-        )
-    test = create_table_model.as_string(cur)
-    cur.execute(test)
-    db.commit()
-
-
-
+    try:
+        schema_list = []
+        for item in schema:
+            new_line = get_column_creation_line(item)
+            if new_line is not None:
+                schema_list.append(new_line)
+        if action is action.CREATE:
+            create_table_model = sql.SQL(
+            "CREATE TABLE {table_name} ({query_list})"
+            ).format(
+                table_name = sql.Identifier(table_name),
+                query_list = sql.SQL(', ').join(x for x in schema_list)
+            )
+            cur.execute(create_table_model)
+        elif action is action.UPDATE:
+            update_table_model = sql.SQL(
+                "ALTER TABLE {table_name} {columns}"
+            ).format(
+                table_name = sql.Identifier(table_name),
+                columns = sql.SQL(', ').join(
+                    sql.SQL("ADD COLUMN {cols}")
+                        .format(cols = x) for x in schema_list
+                )
+            )
+            cur.execute(update_table_model)
+        db.commit()
+        return True
+    except Exception as e:
+        print("An error occurred ", e)
+        if not hasattr(g, "error"):
+            g.error = "An error occured during DB creation"
+        return False
 
 def get_column_creation_line(schema : Tuple[str, str, bool]):
     '''
@@ -83,5 +100,6 @@ the column in an insert query
                 field_name = sql.Identifier(schema[0]),
                 type = sql.SQL(schema[1])
             )
-    return None
+    g.error = ("Type {} is not a valid SQL type".format(schema[1]))
+    raise Exception("Type {} is not a valid SQL type".format(schema[1]))
 
