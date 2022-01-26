@@ -1,5 +1,6 @@
 import sqlite3
 import enum
+from itsdangerous import exc
 import psycopg2
 from typing import Tuple
 from flask import g
@@ -42,8 +43,8 @@ def scaffold_db(db):
 
 
 def run_query(sql_query, params = []):
-    '''Runs the query and throws an exception if an error occurs '''
     try:
+        '''Runs the query and throws an exception if an error occurs '''
         db = get_db()
         cur = get_db_cursor()
         as_string = sql_query.as_string(cur)
@@ -51,11 +52,24 @@ def run_query(sql_query, params = []):
         db.commit()
         return cur
     except Exception as e:
-        print("An error occurred ", e)
         db.rollback()
+        print("An error occurred ", e)
         if not hasattr(g, "error"):
             g.error = "An error occurred while running the db query {}".format(e)
-        return False
+        raise e
+
+
+def get_all_table_names():
+    '''
+    Gets all the names of the current tables in the typeful_db
+    '''
+    cur = run_query(
+        sql.SQL(
+            "SELECT table_name from information_schema.tables WHERE " +
+            "table_schema = 'public' AND table_type = 'BASE TABLE'"
+        )
+    )
+    return [x[0] for x in cur.fetchall()]
 
 
 def get_column_creation_line(schema : Tuple[str, str, bool]):

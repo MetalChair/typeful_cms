@@ -1,94 +1,39 @@
 from typing import Dict, List, Tuple, Deque
 from flask import Blueprint, request, g
 from collections import deque
+
 from typeful_cms_server.application.database import *
 from typeful_cms_server.application.models.message_reponse import message_response
+from typeful_cms_server.application.util.psql_reserved_keywords import PSQL_RESERVED_KEYWORDS
 
 model_routes_blueprint = Blueprint("model_route_blueprint", __name__)
-
-
-
-# def posted_model_to_sql_query(post_data : dict):
-#     def to_sql_query_helper(model_name, model, fkey_table_name = None, fkey_col = None):
-#         sql_list = []
-#         col_list = []
-#         col_list.extend([
-#             sql.SQL("{uuid_name} UUID GENERATED ALWAYS AS IDENTITY").format(
-#                 uuid_name = sql.Identifier(model_name + "_id")
-#             ),
-#             sql.SQL("PRIMARY KEY ({primary_col_name}").format(
-#                 primary_col_name = sql.Identifier(model_name + "_id")
-#             )
-#         ])
-#         if(fkey_table_name is not None and fkey_col is not None):
-#             col_list.extend([  
-#                 sql.SQL("{fk_col} UUID").format(
-#                     fk_col = sql.Identifier(fkey_col)
-#                 ),
-#                 sql.SQL(
-#                     "CONSTRAINT {fk_col} FOREIGN KEY ({fk_col_name}) REFERENCES {fk_table_name}({fk_col_name})"
-#                 ).format(
-#                     fk_col = sql.Identifier("fk_" + fkey_col),
-#                     fk_col_name =  sql.Identifier(fkey_col),
-#                     fk_table_name = sql.SQL(fkey_table_name)
-#                 )]
-#             )
-#         for item in model:
-#             if type(model.get(item)) is dict:
-#                 sql_list.extend(
-#                     to_sql_query_helper(
-#                         item,
-#                         model.get(item), 
-#                         model_name,
-#                         model_name + "_id"
-#                     )
-#                 )
-#                 print("Is dict")
-#             else:
-#                 col_list.append(
-#                     sql.SQL("{col_name} {col_type}").format(
-#                         col_name = sql.Identifier(item),
-#                         col_type = sql.SQL(
-#                             infer_sql_type(model.get(item)
-#                             )
-#                         )
-#                     )
-#                 )
-#         separated_query = sql.SQL(",").join(x for x in col_list)
-#         final_query = sql.SQL("CREATE TABLE {table_name} ({query_col})").format(
-#             table_name = sql.Identifier(model_name),
-#             query_col = sql.SQL("").join(x for x in separated_query)
-#         )
-#         return final_query
-#     '''
-#         Takes a raw JSON object from a posted model and "flattens" it
-#         IE: Turns it into a list of raw sql queries that can be executed
-#     '''
-#     for model_name in post_data:
-#         cur_model = post_data.get(model_name)
-#         test = to_sql_query_helper(model_name, cur_model)
-#     return col_list
 
 def infer_sql_type(object : any):
     '''
         Takes an object and attempts to cast it to various types,
         returning the corresponding sql column type
     '''
-    # try:
-    #     as_int = int(object)
-    #     if as_int == float(object):
-    #         return "INTEGER"
-    # except:
-    #     pass
+    try:
+        as_int = int(object)
+        if as_int == float(object):
+            return "INTEGER"
+    except:
+        pass
 
-    # try:
-    #     float(object)
-    #     return "REAL"
-    # except:
-    #     pass #Explicitly pass to ignore conversion
+    try:
+        float(object)
+        return "REAL"
+    except:
+        pass #Explicitly pass to ignore conversion
 
-    if type(object) is list:
-        return "TEXT ARRAY"
+    try:
+        complex(object)
+        return "REAL"
+    except:
+        pass
+
+    if isinstance(object, list):
+        return "TEXT[]"
 
     return "TEXT"
 
@@ -114,7 +59,11 @@ def flatten_json_object(json_object : Dict) -> List[Tuple[str, dict]]:
     
     for outermost_schema_key in json_object:
         outermost_schema_val = json_object.get(outermost_schema_key)
-        flatten_json_helper(outermost_schema_key, outermost_schema_val)
+        if type(outermost_schema_val) is list:
+            for inner_schema_val in outermost_schema_val:
+                flatten_json_helper(outermost_schema_key, inner_schema_val)
+        else:
+            flatten_json_helper(outermost_schema_key, outermost_schema_val)
     schema_objs.reverse()
     return schema_objs
 
@@ -123,9 +72,43 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
     Takes a list of tuples where each tuple is
     <table_name,json_object,foreign_key_table_name>, converts it to a CREATE
     TABLE command, and runs it
+
+    Also creates a schema table that specifies public/private fields 
+    that the user can use
     '''
     queries = []
+    all_tables = get_all_table_names()
     for (table_name, schema, fk_table) in schema_list:
+
+        #Ensure the table name isn't already in use
+        #Skip if it is
+        if table_name.upper() in all_tables:
+            continue
+        
+        #Ensure the table name provided isn't a reserved word
+        if table_name.upper() in PSQL_RESERVED_KEYWORDS:
+            g.error = "Table name {name} is a reserved keyword".format(
+                name = table_name
+            )
+            raise Exception
+
+        #Create a query that will create a schema privacy table
+        privacy_query = sql.SQL(
+                "CREATE TABLE {table_name} ({creation_columns})"
+        ).format(
+            table_name = sql.Identifier(table_name.upper() + "_PRIVACY"),
+            creation_columns = sql.SQL("public TEXT[]")
+        )
+        run_query(privacy_query)
+
+        #Insert initial records into the privacy table
+        privacy_query = sql.SQL(
+            "INSERT INTO {table_name} (public) VALUES (%s)"
+        ).format(
+            table_name = sql.Identifier(table_name.upper() + "_PRIVACY"),
+        )
+        run_query(privacy_query, [list(schema.keys())])
+
         column_creation_lines = []
         #Add foreign key and primary key columns
         column_creation_lines.append(
@@ -147,7 +130,9 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
                 sql.SQL("{col_name} {col_type}")
                     .format(
                         col_name = sql.Identifier(schema_item),
-                        col_type = sql.SQL(infer_sql_type(schema_item))
+                        col_type = sql.SQL(
+                            infer_sql_type(schema.get(schema_item)
+                        ))
                     )
             )
         query = sql.SQL("CREATE TABLE {table_name} ({create_cols})").format(
@@ -155,197 +140,184 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
             create_cols = sql.SQL(",").join(x for x in column_creation_lines)
         )
         queries.append(query)
+        all_tables.append(table_name.upper())
     for query in queries:
         run_query(query)
 
 def insert_records(schema_list : List[Tuple[str, dict, str]]):
-    #Tuple[str,int] representing:
-    #  <table_name for last created parent record, and int id>
-    parent_record_ctxs: Deque[Tuple(str, int)] = deque()
-    
-    '''
-        geo, 3
-        address, 2
-        users, 1
 
-        if fk_table != stack.top.table_name
     '''
+        Takes a list of schema options containing a definition for records
+        and inserts them into the corresponding tables
+    '''
+
+    """
+        This is a bit confusing. We've created a list of schemas from a json
+        object where the first element in the list is the outermost object. The
+        goal here is to insert the outermost object first so we can retrieve a
+        Foreign Key from it. But we can have nested, objects IE:
+            "users": {
+                "name: {...}
+                "address" : { ..., "coordinates" : {}, ...}
+                "company" : {...}
+            }
+        The naive approach would be to just keep track of the inserted FK record
+        as we loop throuhg all the schemas. This causes a problem in this
+        instance, however, because coordinates should have an FK value of an
+        addresss record, but company should still refer to a user record.
+
+        To solve this, we make a note of the last fk record for each context in
+        a queue and pop from it till we find the most recently created FK for
+        our intended parent table
+
+        IE:
+            After user creation:
+                QUEUE: {(users, FK_NUM)}
+            After address creation
+                QUEUE: {(address, FK_NUM)(users,FK_NUM)}
+            
+            Coordinates would then be created by pulling the FK off of the
+            record on top of the queue. After which, the creation of a
+            coordinates object, we will pop items off the top of the queue until
+            we find an entry where the string matches the fk_table name value
+    """
+
+    # A queue consisting of tuples[table_name, foreign_key_int]
+    parent_record_ctxs: Deque[Tuple(str, int)] = deque()
+
 
     for (table_name, schema, fk_table) in schema_list:
         while(
             len(parent_record_ctxs) > 0 and
             parent_record_ctxs[0][0] is not fk_table
         ):
-
             parent_record_ctxs.popleft()
         col_val_map = {}
+
         if fk_table:
             col_val_map[fk_table + "_id"] = parent_record_ctxs[0][1]
+
         for key in schema:
             val = schema.get(key)
             if type(val) is not dict:
                 if type(val) is list:
                     val = [str(x) for x in val]
                 col_val_map[key] = val
-
-        cur = run_query(
-            sql.SQL("INSERT INTO {table_name}({cols}) VALUES ({vals}) RETURNING {id} ")
-            .format(
-                table_name = sql.Identifier(table_name.upper()),
-                cols = sql.SQL(", ").join(
-                        sql.Identifier(x) for x in col_val_map.keys()
+        try:
+            cur = run_query(
+                sql.SQL("INSERT INTO {table_name}({cols}) VALUES ({vals}) RETURNING {id} ")
+                .format(
+                    table_name = sql.Identifier(table_name.upper()),
+                    cols = sql.SQL(", ").join(
+                            sql.Identifier(x) for x in col_val_map.keys()
+                        ),
+                    vals = sql.SQL(", ").join(
+                        sql.Literal(col_val_map[x]) for x in col_val_map.keys()
                     ),
-                vals = sql.SQL(", ").join(
-                    sql.Literal(col_val_map[x]) for x in col_val_map.keys()
-                ),
-                id = sql.Identifier(table_name + "_id")
+                    id = sql.Identifier(table_name + "_id")
+                )
             )
-        )
-        inserted_id = cur.fetchone()[0]
-        if inserted_id:
-            parent_record_ctxs.appendleft(
-                (table_name, inserted_id)
-            )
-        print(schema)
+            inserted_id = cur.fetchone()[0]
+            if inserted_id:
+                parent_record_ctxs.appendleft(
+                    (table_name, inserted_id)
+                )
+        except Exception as e:
+            raise e
     return
 
+def update_record(update_model : Dict[str, dict], update_action : str):
+    for (table_action, table_val) in update_model.items():
+        if update_action == "add":
+            column_list : Dict[str, str] = table_val.get("columns")
+            query = sql.SQL("ALTER TABLE {table_name} {add_clauses}").format(
+                    table_name = sql.Identifier(table_action.upper()),
+                    add_clauses = sql.SQL(", ").join(
+                        sql.SQL("ADD {col_name} {col_type}").format(
+                            col_name = sql.Identifier(name),
+                            col_type = sql.SQL(infer_sql_type(col_type))
+                        ) for (name, col_type) in column_list.items()
+                    )
+                )
+            cur = run_query(query)
+        elif update_action == "drop":
+            column_list : Dict[str, str] = table_val.get("columns")
+            query = sql.SQL("ALTER TABLE {table_name} {add_clauses}").format(
+                    table_name = sql.Identifier(table_action.upper()),
+                    add_clauses = sql.SQL(", ").join(
+                        sql.SQL("DROP {col_name}").format(
+                            col_name = sql.Identifier(name),
+                        ) for name in column_list
+                    )
+                )
+            cur = run_query(query)
+        elif update_action == "update":
+            set_params : Dict = table_val.get("set")
+            where_params : Dict = table_val.get("where")
+            query = sql.SQL(
+                "UPDATE {table_name} SET {set_clauses} WHERE {where_clauses}"
+            ).format(
+                table_name =  sql.Identifier(table_action.upper()),
+                set_clauses = sql.SQL(", ").join(
+                    sql.SQL("{col_name} = {placeholder}")
+                        .format(
+                            col_name = sql.Identifier(x),
+                            placeholder = sql.Placeholder()
+                    ) for x in set_params
+                ),
+                where_clauses = sql.SQL(", ").join(
+                    sql.SQL("{col_name} = {placeholder}")
+                        .format(
+                            col_name = sql.Identifier(x),
+                            placeholder = sql.Placeholder()
+                    ) for x in where_params
+                )
+            )
+            cur = run_query(
+                query, 
+                list(set_params.values()) + list(where_params.values())
+            )
+    return
 
-@model_routes_blueprint.route("/Model", methods = ["POST", "DELETE", "PATCH"])
+def drop_table(table_name : str):
+    query = sql.SQL("DROP TABLE {table_name}").format(
+        table_name = sql.Identifier(table_name.upper())
+    )
+    run_query(query)
+
+
+@model_routes_blueprint.route("/Model", methods = ["POST", "PATCH"])
 def perform_model_action():
     model = request.get_json()
     act_type = DB_ACTION_TYPE.from_post_method(request.method)
-    if act_type == DB_ACTION_TYPE.CREATE:
-        dict_list = flatten_json_object(model)
-        try:
-            create_tables_from_json_schema(dict_list)
-            insert_records(dict_list)
-            res = message_response(True, msg = "Created models and added to db")
-            return res.as_dict()
-        except Exception as e:
-            res = message_response(False, e_msg= str(e))
-            return res.as_dict()
+    response_object = message_response(False, e_msg= "Unknown action in submission")
+    try:
+        if act_type == DB_ACTION_TYPE.CREATE:
+                dict_list = flatten_json_object(model)
+                create_tables_from_json_schema(dict_list)
+                insert_records(dict_list)
+                response_object = message_response(True, msg = "Created models and added to db")
+        if act_type == DB_ACTION_TYPE.UPDATE:
+            if len(model) > 1:
+                response_object = message_response(False, e_msg = "Update queries must contain one and only one action")
+            else:
+                for action_item in model:
+                    response_object = message_response(True, msg = "Action succeeded")
+                    update_record(model.get(action_item), action_item)
+        return response_object.as_dict()
+    except Exception:
+        response_object = message_response(False, e_msg= getattr(g, "error", "Unknown Error"))
+        return response_object.as_dict()
 
-# def perform_model_action():
-#     model = request.get_json()
-#     if is_valid_model(model, act_type):
-#         schema_list = posted_model_to_schema_list(model)
-#         if act_type is DB_ACTION_TYPE.CREATE:
-#             create_model_table(schema_list, model["name"])
-#             create_route_table_entry(model["query_name"], model["name"])
-#         elif act_type is DB_ACTION_TYPE.UPDATE:
-#             update_model_table(schema_list, model["name"])
-#         elif act_type is DB_ACTION_TYPE.DELETE:
-#             delete_model_table_col(schema_list, model["name"])
-#     status = not hasattr(g, "error")
-#     return {
-#         "actionSucceeded" : status,
-#         "errorMessage"    : getattr(g, "error", "")
-#     }
-
-# def flatten
-
-# def posted_model_to_schema_list(model : dict) -> List[Tuple[str, str, bool]]:
-#     '''
-#         Takes the posted JSON model and converts the
-#         model_def attribute to a list of tuples
-#     '''
-#     schema_list = []
-#     for schema_item in model["model_def"]:
-#         schema_list.append(
-#             (
-#                 schema_item.get("name"),
-#                 schema_item.get("type"),
-#                 schema_item.get("nullable")
-#             )
-#         )
-#     return schema_list
-
-# def schema_to_sql_create_query(schema : Tuple[str, str or dict, bool]):
-#     '''
-#     tuple<model_name, type, nullable>
-#     '''
-#     schema_list = []
-#     for item in schema:
-#         if type(item[1]) is dict:
-#             if is_valid_model(item[1], DB_ACTION_TYPE.CREATE):
-#                 inner_schema_list = posted_model_to_schema_list(item[1])
-#                 create_model_table(inner_schema_list, item[1]["name"])
-#                 create_route_table_entry(item[1]["query_name"], item[1]["name"])
-#             print("Type is dict")
-#         else:
-#             new_line = get_column_creation_line(item)
-#             if new_line is not None:
-#                 schema_list.append(new_line)
-#     return schema_list
-
-# def create_model_table(schema : Tuple[str, str, bool], table_name: str):
-#     schema_list = schema_to_sql_create_query(schema)
-#     run_query(sql.SQL(
-#         "CREATE TABLE {table_name} ({query_list})"
-#         ).format(
-#             table_name = sql.Identifier(table_name),
-#             query_list = sql.SQL(', ').join(x for x in schema_list)
-#         )
-#     )
-
-# def update_model_table(schema : Tuple[str, str, bool], table_name: str):
-#     schema_list = schema_to_sql_create_query(schema)
-#     run_query(sql.SQL(
-#         "ALTER TABLE {table_name} {columns}"
-#         ).format(
-#             table_name = sql.Identifier(table_name),
-#             columns = sql.SQL(', ').join(
-#                 sql.SQL("ADD COLUMN {cols}")
-#                     .format(cols = x) for x in schema_list
-#             )
-#     ))
-# def create_route_table_entry(query_name : str, table_name : str):
-#     run_query(
-#         "INSERT INTO typeful_routes (query_name, table_name) VALUES (%s,%s)",
-#         [query_name, table_name]
-#     )
-
-
-# def delete_model_table_col(schema : Tuple[str, str, bool], table_name: str):
-#     run_query(
-#         sql.SQL(
-#             "ALTER TABLE {table_name} {cols}"
-#             ).format(
-#                 table_name = sql.Identifier(table_name),
-#                 cols = sql.SQL(', ').join(
-#                     sql.SQL("DROP COLUMN {cols}")
-#                         .format(cols = sql.Identifier(x[0])) for x in schema
-#                 )
-#             )
-#     )
-
-# def is_valid_model(model, type : DB_ACTION_TYPE):
-#     '''
-#         Validates an order creation model and populates
-#         the request context object with any model errors
-#     '''
-#     if "name" not in model:
-#         g.error = "You must specify a model name"
-#         return False
-#     if "model_def" not in model:
-#         g.error = "You must specify a model definition"
-#         return False
-#     else:
-#         if type is DB_ACTION_TYPE.UPDATE or type is DB_ACTION_TYPE.CREATE:
-#             for item in model["model_def"]:
-#                 if(
-#                     "name" not in item or
-#                     "type" not in item or
-#                     "nullable" not in item
-#                 ):
-#                     g.error = "Model definitions for create/update must specify a name, type, and nullable field"
-#                     return False
-
-#     #Requests for model creation must have a queryable_name
-#     if type == DB_ACTION_TYPE.CREATE and "query_name" not in model:
-#         g.error = "You must specify a queryable_name for this object"
-#         return False
+@model_routes_blueprint.route("/Model/<table_name>", methods = ["DELETE"])
+def perform_delete_action(table_name):
+    response_object = message_response(False, e_msg= "Unknown action in submission")
+    try:
+        drop_table(table_name)
+        response_object = message_response(True, msg = "Table deleted")
+        return response_object.as_dict()
+    except Exception:
+        response_object = message_response(False, e_msg= getattr(g, "error", "Unkown Error"))
+        return response_object.as_dict()
 
     
-
-#     return True
