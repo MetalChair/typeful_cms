@@ -1,11 +1,9 @@
-import sqlite3
 import enum
-from itsdangerous import exc
 import psycopg2
 from typing import Tuple
 from flask import g
 from psycopg2 import sql
-from typeful_cms_server import config
+from application import config
 
 
 DATABASE = "db/typeful.db"

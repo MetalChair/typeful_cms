@@ -2,9 +2,9 @@ from typing import Dict, List, Tuple, Deque
 from flask import Blueprint, request, g
 from collections import deque
 
-from typeful_cms_server.application.database import *
-from typeful_cms_server.application.models.message_reponse import message_response
-from typeful_cms_server.application.util.psql_reserved_keywords import PSQL_RESERVED_KEYWORDS
+from application.database.database import *
+from application.models.message_reponse import message_response
+from application.util.psql_reserved_keywords import PSQL_RESERVED_KEYWORDS
 
 model_routes_blueprint = Blueprint("model_route_blueprint", __name__)
 
@@ -94,9 +94,9 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
 
         #Create a query that will create a schema privacy table
         privacy_query = sql.SQL(
-                "CREATE TABLE {table_name} ({creation_columns})"
+                "CREATE TABLE Attribs.{table_name} ({creation_columns})"
         ).format(
-            table_name = sql.Identifier(table_name.upper() + "_PRIVACY"),
+            table_name = sql.Identifier(table_name.upper() + "_ATTRIBS"),
             creation_columns = sql.SQL("public TEXT[]")
         )
         run_query(privacy_query)

@@ -5,9 +5,9 @@ from flask.ctx import AppContext
 import pytest
 import psycopg2
 import json
-from typeful_cms_server import config
-from typeful_cms_server.application import init_app
-from typeful_cms_server.application.database import get_db, get_db_cursor, scaffold_db
+from application import config
+from application import init_app
+from application.database.database import get_db, get_db_cursor, scaffold_db
 
 @pytest.fixture
 def test_app() -> AppContext:

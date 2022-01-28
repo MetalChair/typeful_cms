@@ -1,11 +1,10 @@
 from typing import List
 from flask import json
 from flask.ctx import AppContext
-from matplotlib.pyplot import table
 from psycopg2 import sql
 
-from typeful_cms_server.application.database import get_db, get_db_cursor
-from typeful_cms_server.tests.helpers import *
+from application.database.database import get_db, get_db_cursor
+from tests.helpers import *
 
 SAMPLE_CREATION_POST_DATA =   {
     "users" : [

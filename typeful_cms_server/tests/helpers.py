@@ -1,4 +1,4 @@
-from typeful_cms_server.application.database import get_db, get_db_cursor
+from application.database.database import get_db, get_db_cursor
 from typing import List
 from psycopg2 import sql
 
