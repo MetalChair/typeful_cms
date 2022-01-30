@@ -39,6 +39,24 @@ def scaffold_db(db):
     db.cursor().execute(sql_script)
     db.autocommit = False
 
+def run_queries(list_of_queries):
+    '''
+    Runs a list of queries of format (query, list_of_params). 
+    Batches the query by running them all on a single cursor before committing
+    '''
+    try:
+        cursor = get_db_cursor()
+        db = get_db()
+        for (query, params) in list_of_queries:
+            cursor.execute(query, params)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print("An error occurred ", e)
+        if not hasattr(g, "error"):
+            g.error = "An error occurred while running the db query {}".format(e)
+        raise e
+
 
 def run_query(sql_query, params = []):
     try:
@@ -55,6 +73,7 @@ def run_query(sql_query, params = []):
         if not hasattr(g, "error"):
             g.error = "An error occurred while running the db query {}".format(e)
         raise e
+
 
 
 def get_all_table_names():

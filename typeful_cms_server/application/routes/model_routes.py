@@ -94,20 +94,27 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
 
         #Create a query that will create a schema privacy table
         privacy_query = sql.SQL(
-                "CREATE TABLE Attribs.{table_name} ({creation_columns})"
+                "CREATE TABLE attribs.{table_name} ({creation_columns})"
         ).format(
             table_name = sql.Identifier(table_name.upper() + "_ATTRIBS"),
-            creation_columns = sql.SQL("public TEXT[]")
+            creation_columns = sql.SQL(",").join([
+                sql.SQL("attrib_seq SERIAL PRIMARY KEY"),
+                sql.SQL("dependent_cols TEXT[]")
+
+            ])
         )
-        run_query(privacy_query)
+        queries.append((privacy_query, []))
+        
+        #We have to run this query on its own to get the 
+        #primary key out so that we can
 
         #Insert initial records into the privacy table
         privacy_query = sql.SQL(
-            "INSERT INTO {table_name} (public) VALUES (%s)"
+            "INSERT INTO attribs.SCHEMA_PRIVACY (attribs_id, public) VALUES (%s)"
         ).format(
-            table_name = sql.Identifier(table_name.upper() + "_PRIVACY"),
+            table_name = sql.Identifier("SCHEMA_PRIVACY"),
         )
-        run_query(privacy_query, [list(schema.keys())])
+        queries.append((privacy_query, [list(schema.keys())]))
 
         column_creation_lines = []
         #Add foreign key and primary key columns
@@ -139,10 +146,9 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
             table_name = sql.Identifier(table_name.upper()),
             create_cols = sql.SQL(",").join(x for x in column_creation_lines)
         )
-        queries.append(query)
+        queries.append((query, []))
         all_tables.append(table_name.upper())
-    for query in queries:
-        run_query(query)
+    run_queries(queries)
 
 def insert_records(schema_list : List[Tuple[str, dict, str]]):
 
@@ -187,13 +193,18 @@ def insert_records(schema_list : List[Tuple[str, dict, str]]):
 
 
     for (table_name, schema, fk_table) in schema_list:
+        #Find the first context on our context stack that matches the current
+        #table.
         while(
             len(parent_record_ctxs) > 0 and
             parent_record_ctxs[0][0] is not fk_table
         ):
             parent_record_ctxs.popleft()
+        
+        #Create a map of all our values
         col_val_map = {}
 
+        #Map the foreign column id value
         if fk_table:
             col_val_map[fk_table + "_id"] = parent_record_ctxs[0][1]
 
