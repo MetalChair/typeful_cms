@@ -1,4 +1,4 @@
-from application.routes.row_routes import parse_query_string
+from application.routes.query_routes import parse_query_string
 
 def test_parse_query_string():
     test_one = parse_query_string(b'name=logan', "utf-8")

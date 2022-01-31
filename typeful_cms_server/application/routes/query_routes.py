@@ -67,14 +67,20 @@ def find_operator_in_query_string(
 def parse_query_string(query_string : bytes, encoding : str) -> List[Tuple[str, str, str]]:
     as_string = query_string.decode(encoding)
     split_arr = as_string.split("&")
+
+
     query_params_list = []
     #TODO: Find a way to parse query strings that contain equality characters
     #TODO: Beat this up for parsing
     for query_item in split_arr:
-        (found_operator, _) = find_operator_in_query_string(query_item)
-        query_params_list.append(
-            query_item.partition(found_operator)
-        )
+        if(query_item.startswith("includes")):
+            includes_list = query_item.split("=")[1]
+            return
+        else:
+            (found_operator, _) = find_operator_in_query_string(query_item)
+            query_params_list.append(
+                query_item.partition(found_operator)
+            )
     return query_params_list
 
 def form_sql_from_query_list(

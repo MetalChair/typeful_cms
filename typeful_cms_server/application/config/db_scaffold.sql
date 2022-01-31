@@ -3,6 +3,8 @@
 --     query_name TEXT NOT NULL,
 --     table_name TEXT NOT NULL
 -- );
+DROP SCHEMA IF exists public CASCADE;
+DROP SCHEMA IF EXISTS attribs CASCADE;
 create schema attribs;
 create schema public;
 create table if not exists attribs."APP_DEFINITION" (
@@ -10,11 +12,21 @@ create table if not exists attribs."APP_DEFINITION" (
     item_key TEXT not null,
     item_val TEXT not null
 );
+create table if not exists attribs."SCHEMA_ATTRIBS" (
+    id serial PRIMARY KEY NOT NULL,
+    table_name TEXT NOT NULL,
+    associated_tables TEXT[]
+);
 create table if not exists attribs."SCHEMA_PRIVACY" (
     id serial PRIMARY KEY NOT NULL,
-    public TEXT[],
-    table_id INTEGER FOREIGN KEY
+    role_name TEXT,
+    accesible_fields TEXT[],
+    attrib_table_id INTEGER,
+    CONSTRAINT fk_attrib_table_id 
+        FOREIGN KEY(attrib_table_id) 
+        REFERENCES attribs."SCHEMA_ATTRIBS"(id)  
 );
+
 
 GRANT ALL ON SCHEMA attribs TO typefulserver;
 GRANT ALL ON SCHEMA public TO typefulserver;

@@ -38,7 +38,7 @@ def infer_sql_type(object : any):
     return "TEXT"
 
 
-def flatten_json_object(json_object : Dict) -> List[Tuple[str, dict]]:
+def flatten_json_object(json_object : Dict) -> List[Tuple[str, dict, str, List[str]]]:
     '''
     Flattens a json object to a dict of dicts representing the outermost
     object and all of the objects inside the query 
@@ -49,13 +49,15 @@ def flatten_json_object(json_object : Dict) -> List[Tuple[str, dict]]:
 
     def flatten_json_helper(key: str, json_object : Dict, fkey_table = ""):
         obj_without_nested_dicts = {}
+        related_tables = []
         for inner_schema_key in json_object:
             inner_schema_val = json_object.get(inner_schema_key)
             if type(inner_schema_val) is dict:
+                related_tables.append(inner_schema_key)
                 flatten_json_helper(inner_schema_key,inner_schema_val, key)
             else:
                 obj_without_nested_dicts[inner_schema_key] = inner_schema_val
-        schema_objs.append((key,obj_without_nested_dicts, fkey_table))
+        schema_objs.append((key,obj_without_nested_dicts, fkey_table, related_tables))
     
     for outermost_schema_key in json_object:
         outermost_schema_val = json_object.get(outermost_schema_key)
@@ -78,7 +80,7 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
     '''
     queries = []
     all_tables = get_all_table_names()
-    for (table_name, schema, fk_table) in schema_list:
+    for (table_name, schema, fk_table, related_tables) in schema_list:
 
         #Ensure the table name isn't already in use
         #Skip if it is
@@ -92,29 +94,6 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
             )
             raise Exception
 
-        #Create a query that will create a schema privacy table
-        privacy_query = sql.SQL(
-                "CREATE TABLE attribs.{table_name} ({creation_columns})"
-        ).format(
-            table_name = sql.Identifier(table_name.upper() + "_ATTRIBS"),
-            creation_columns = sql.SQL(",").join([
-                sql.SQL("attrib_seq SERIAL PRIMARY KEY"),
-                sql.SQL("dependent_cols TEXT[]")
-
-            ])
-        )
-        queries.append((privacy_query, []))
-        
-        #We have to run this query on its own to get the 
-        #primary key out so that we can
-
-        #Insert initial records into the privacy table
-        privacy_query = sql.SQL(
-            "INSERT INTO attribs.SCHEMA_PRIVACY (attribs_id, public) VALUES (%s)"
-        ).format(
-            table_name = sql.Identifier("SCHEMA_PRIVACY"),
-        )
-        queries.append((privacy_query, [list(schema.keys())]))
 
         column_creation_lines = []
         #Add foreign key and primary key columns
@@ -147,6 +126,25 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
             create_cols = sql.SQL(",").join(x for x in column_creation_lines)
         )
         queries.append((query, []))
+
+        #Create a query that will create a schema attrib entry
+        attrib_query = sql.SQL(
+                "INSERT INTO attribs.\"SCHEMA_ATTRIBS\"(table_name, associated_tables)" +
+                "VALUES (%s, %s) RETURNING id"  
+        )
+        #We have to run this first so we can get the PK out and create the FK
+        #reference in the privacy column
+        cur = run_query(attrib_query, [table_name.upper(), related_tables])
+
+        id = cur.fetchone()[0]
+
+        privacy_query = sql.SQL(
+            "INSERT INTO attribs.\"SCHEMA_PRIVACY\"" +
+            "(role_name, accesible_fields, attrib_table_id)" +
+            "VALUES (%s, %s, %s)"
+        )
+        queries.append((privacy_query, ["public",list(schema.keys()), id]))
+
         all_tables.append(table_name.upper())
     run_queries(queries)
 
@@ -168,7 +166,7 @@ def insert_records(schema_list : List[Tuple[str, dict, str]]):
                 "company" : {...}
             }
         The naive approach would be to just keep track of the inserted FK record
-        as we loop throuhg all the schemas. This causes a problem in this
+        as we loop through all the schemas. This causes a problem in this
         instance, however, because coordinates should have an FK value of an
         addresss record, but company should still refer to a user record.
 
@@ -192,7 +190,7 @@ def insert_records(schema_list : List[Tuple[str, dict, str]]):
     parent_record_ctxs: Deque[Tuple(str, int)] = deque()
 
 
-    for (table_name, schema, fk_table) in schema_list:
+    for (table_name, schema, fk_table, _) in schema_list:
         #Find the first context on our context stack that matches the current
         #table.
         while(
@@ -263,6 +261,7 @@ def update_record(update_model : Dict[str, dict], update_action : str):
                 )
             cur = run_query(query)
         elif update_action == "update":
+            #Get affiliated tables 
             set_params : Dict = table_val.get("set")
             where_params : Dict = table_val.get("where")
             query = sql.SQL(
@@ -316,7 +315,7 @@ def perform_model_action():
                     response_object = message_response(True, msg = "Action succeeded")
                     update_record(model.get(action_item), action_item)
         return response_object.as_dict()
-    except Exception:
+    except Exception as e:
         response_object = message_response(False, e_msg= getattr(g, "error", "Unknown Error"))
         return response_object.as_dict()
 

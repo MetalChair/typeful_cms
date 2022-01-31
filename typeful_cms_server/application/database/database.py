@@ -88,23 +88,14 @@ def get_all_table_names():
     )
     return [x[0] for x in cur.fetchall()]
 
+def get_associated_tables(table_name):
+    '''
+    Gets all the tables associated with table_name
+    '''
+    run_query(
+        "SELECT associated_tables FROM attribs.\"SCHEMA_ATTRIBS\"" +
+        " WHERE table_name = %s",
+        table_name
+    ).fetchone()[0]
 
-def get_column_creation_line(schema : Tuple[str, str, bool]):
-    '''
-Takes a schema tuple[str, str, bool] and returns a line of sql that will create
-the column in an insert query
-    '''
-    if schema[1].upper() in VALID_DB_TYPES:
-        if schema[2]:
-            return sql.SQL("{field_name} {type}").format(
-                field_name = sql.Identifier(schema[0]),
-                type = sql.SQL(schema[1])
-            )
-        else:
-            return sql.SQL("{field_name} {type} NOT NULL").format(
-                field_name = sql.Identifier(schema[0]),
-                type = sql.SQL(schema[1])
-            )
-    g.error = ("Type {} is not a valid SQL type".format(schema[1]))
-    raise Exception("Type {} is not a valid SQL type".format(schema[1]))
 

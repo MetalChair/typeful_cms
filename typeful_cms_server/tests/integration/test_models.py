@@ -65,7 +65,7 @@ SAMPLE_CREATION_POST_DATA =   {
     
 }
 
-SAMPLE_UPDATE_DATA = {
+SAMPLE_DROP_DATA = {
     "drop": {
         "users" : {
             "columns" :[
@@ -78,7 +78,7 @@ SAMPLE_UPDATE_DATA = {
 
 
 
-def test_simple_model_creation(test_app : AppContext):
+def test_model_creation(test_app : AppContext):
     #Arrange
     
     #Act
@@ -88,44 +88,25 @@ def test_simple_model_creation(test_app : AppContext):
     responseJson = json.loads(res.data)
     succesful_response_object(responseJson)
     cols_exist_on_table("BUTTS", ["hello"])
-    # cols_exist_on_table("test_model",["my_cool_string", "my_cool_int"])
-    # table_contains_record("typeful_routes", 
-    #     ["table_name", "query_name"], ["test_model", "TestModel"])
+    cols_exist_on_table("USERS",["id","name","favorite_number"])
 
-def test_complex_model_creation(test_app : AppContext):
+def test_delete_column_from_model(test_app : AppContext):
     #Arrange
+    test_model_creation(test_app)
+    res = test_app.app.test_client().patch("/Model", json = SAMPLE_DROP_DATA)
+    succesful_response_object(json.loads(res.data))
+    cols_dont_exist_on_table("USERS", ["favorite_number", "name"])
+
+
+# def test_delete_from_model(test_app : AppContext):
+#     #Arrange
+#     test_simple_model_creation(test_app)
     
-    #Act
-    res = test_app.app.test_client().post("/Model", json = SAMPLE_CREATION_NESTED_POST_DATA)
-    
-    #Assert
-    responseJson = json.loads(res.data)
-    succesful_response_object(responseJson)
-    cols_exist_on_table("test_model",["my_cool_string", "my_cool_int"])
-    table_contains_record("typeful_routes", 
-        ["table_name", "query_name"], ["test_model", "TestModel"])
+#     #Act
+#     res = test_app.app.test_client().delete("/Model/Geo")
+#     responseJson = json.loads(res.data)
 
-
-def test_add_to_model(test_app : AppContext):
-    #Arrange
-    test_simple_model_creation(test_app)
-
-    #Act
-    res = test_app.app.test_client().patch("/Model", json = SAMPLE_UPDATE_DATA)
-    responseJson = json.loads(res.data)
-
-    #Asset
-    succesful_response_object(responseJson)
-
-def test_delete_from_model(test_app : AppContext):
-    #Arrange
-    test_simple_model_creation(test_app)
-    
-    #Act
-    res = test_app.app.test_client().delete("/Model/Geo")
-    responseJson = json.loads(res.data)
-
-    #Assert
-    succesful_response_object(responseJson)
+#     #Assert
+#     succesful_response_object(responseJson)
 
 
