@@ -1,10 +1,14 @@
 from ast import Str
 from collections import deque
 from typing import Deque, List
+from xml.etree.ElementInclude import include
+from attr import attr
 from flask import Blueprint, request, g
 from matplotlib.pyplot import table
 from pandas import read_sql_query
+from sympy import false
 from application.database.database import *
+from typeful_cms_server.application.models.message_reponse import message_response
 
 row_routes_blueprint = Blueprint("row_route_blueprint", __name__)
 
@@ -111,11 +115,69 @@ def map_results_to_dict(res_list : List, col_descriptors):
     return mapped_object_list
 
 def form_query(table_name: str, query_clauses : List[Tuple[str, str, str]], 
-    attribs : Dict[str, Dict[str, str or List[Str]]]):
-    query = sql.SQL("SELECT {accesible_fields} FROM {table_name} {join_clauses}")
+    attribs : Dict[str, Dict[str, str or List[Str]]], includes : List[str]):
+    '''
+        Takes a table_name to be queried, a list of where clauses of the form
+        (field, equality_op, value), a list of tables to include, and 
+        an attribute dictionary where the format is:
+        
+        {
+            table_name: {
+                accesible_fields: [...]
+                parent_table: "..."
+            }
+        }
 
+        Forms a valid sql query that can be executed
+    '''
+    
+    #Get all the fields to be queried
+    to_query_fields = []
+    alias = 0
+    for _, properties in attribs.items():
+        properties["alias"] = "t" + str(alias)
+        if "accesible_fields" in properties:
+            to_query_fields.extend(
+                (properties["alias"], x) 
+                for x in properties["accesible_fields"]
+            )
+        alias = alias + 1
 
-    return
+    join_clauses = []
+    for table in includes:
+        if "parent_table" in attribs[table]:
+            child_alias = attribs[table]["alias"]
+            parent_table = attribs[table]["parent_table"]
+            parent_alias = attribs[parent_table]["alias"]
+            join_clauses.append(
+                sql.SQL(
+                    "JOIN public.{table_name} {child_alias} " +
+                    "ON {parent_alias}.{parent_join_clause} = {child_alias}.{child_join_clause}"
+                ).format(
+                    table_name = sql.Identifier(table),
+                    parent_join_clause = sql.Identifier(parent_table.lower() + "_id"),
+                    child_join_clause = sql.Identifier(
+                        (parent_table.lower() + "_id")
+                    ),
+                    parent_alias = sql.SQL(parent_alias),
+                    child_alias = sql.SQL(child_alias)
+                )
+            )
+        else:
+            raise Exception("No parent table found for includes table")
+
+    query = sql.SQL("SELECT {accesible_fields} FROM {table_name} {alias} {join_clauses}").format(
+        accesible_fields = sql.SQL(", ").join(
+            sql.SQL("{table_alias}.{col_name}").format(
+                table_alias = sql.SQL(x),
+                col_name = sql.Identifier(y)
+            ) for x, y in to_query_fields),
+        table_name = sql.Identifier(table_name),
+        join_clauses = sql.SQL("").join(x for x in join_clauses),
+        alias = sql.SQL(attribs[table_name]["alias"])
+    )
+
+    return query
 
 @row_routes_blueprint.route("/<table_name>", methods = ["GET"])
 def run_posted_query(table_name : str):
@@ -126,5 +188,14 @@ def run_posted_query(table_name : str):
         request.query_string, request.charset)
     #Explicitly include the queried table in includes
     field_attribs = get_table_attribs([*includes, table_name] , credential_tier)
+    query = form_query(table_name, query_clauses, field_attribs, includes)
+    response = message_response(False)
+    try:
+        query_res = run_query(query).fetchall()
+        return query_res
+    except Exception as e:
+        response.status = False
+        response.error = str(e)
+        
     #Form the query
-    return
+    return response
