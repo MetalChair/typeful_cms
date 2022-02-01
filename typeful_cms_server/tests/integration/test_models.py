@@ -1,3 +1,4 @@
+from pickle import TRUE
 from typing import List
 from flask import json
 from flask.ctx import AppContext
@@ -65,7 +66,17 @@ SAMPLE_CREATION_POST_DATA =   {
     
 }
 
-SAMPLE_DROP_DATA = {
+SAMPLE_DROP_SINGLE_DATA = {
+    "drop": {
+        "users" : {
+            "columns" :[
+                "favorite_number",
+            ]
+        }
+    }
+}
+
+SAMPLE_DROP_MANY_DATA = {
     "drop": {
         "users" : {
             "columns" :[
@@ -74,6 +85,39 @@ SAMPLE_DROP_DATA = {
             ]
         }
     }
+}
+
+SAMPLE_ADD_SINGLE_DATA = {
+    "add": {
+        "users": {
+            "columns" :{
+                "likes_pretzels" : True
+            }
+        }
+    }
+}
+
+SAMPLE_ADD_MANY_DATA = {
+    "add": {
+        "users": {
+            "columns" :{
+                "likes_pretzels" : True,
+                "likes_cracker_jacks" : ""
+            }
+        }
+    }
+}
+
+EXPECTED_COL_TYPE_IDS = {
+    "users_id" : 23,
+    "aliases" : 1009,
+    "email" : 25,
+    "favorite_number" : 700,
+    "id" : 23,
+    "name" : 25,
+    "phone" : 25,
+    "username" : 25,
+    "website" : 25
 }
 
 
@@ -90,23 +134,59 @@ def test_model_creation(test_app : AppContext):
     cols_exist_on_table("BUTTS", ["hello"])
     cols_exist_on_table("USERS",["id","name","favorite_number"])
 
-def test_delete_column_from_model(test_app : AppContext):
+def test_delete_single_column(test_app : AppContext):
     #Arrange
     test_model_creation(test_app)
-    res = test_app.app.test_client().patch("/Model", json = SAMPLE_DROP_DATA)
+    res = test_app.app.test_client().patch("/Model", json = SAMPLE_DROP_SINGLE_DATA)
     succesful_response_object(json.loads(res.data))
-    cols_dont_exist_on_table("USERS", ["favorite_number", "name"])
+    cols_dont_exist_on_table("USERS", ["favorite_number"])
+    cols_exist_on_table(
+        "USERS", ["name", "username", "email", "aliases", "phone", "website"])
 
 
-# def test_delete_from_model(test_app : AppContext):
-#     #Arrange
-#     test_simple_model_creation(test_app)
+def test_add_single_column(test_app):
+    #arrange
+    test_model_creation(test_app)
+
+    #act
+    res = test_app.app.test_client().patch("/Model", json = SAMPLE_ADD_SINGLE_DATA)
+    succesful_response_object(json.loads(res.data))
+    #assert
+    cols_exist_on_table("USERS", ["likes_pretzels"])
+
+
+def test_add_many_column(test_app):
+    #arrange
+    test_model_creation(test_app)
+
+    #act
+    res = test_app.app.test_client().patch("/Model", json = SAMPLE_ADD_MANY_DATA)
+
+    #assert
+    succesful_response_object(json.loads(res.data))
+    cols_exist_on_table("USERS", ["likes_pretzels", "likes_cracker_jacks"])
+
+
+def test_delete_many_column(test_app):
+    #arrange
+    test_model_creation(test_app)
+
+    #act
+    res = test_app.app.test_client().patch("/Model", json = SAMPLE_DROP_MANY_DATA)
     
-#     #Act
-#     res = test_app.app.test_client().delete("/Model/Geo")
-#     responseJson = json.loads(res.data)
+    #assert
+    cols_dont_exist_on_table("USERS", ["name", "favorite_number"])
 
-#     #Assert
-#     succesful_response_object(responseJson)
+def test_typings_on_creation(test_app):
+    #arrange
+    test_model_creation(test_app)
 
+    #act
+    cur = get_db_cursor()
+    cur.execute("SELECT * FROM public.\"USERS\"")
+
+    #assert
+    for col in cur.description:
+        assert col.type_code == EXPECTED_COL_TYPE_IDS[col.name]
+    return
 

@@ -1,6 +1,6 @@
 import enum
 import psycopg2
-from typing import Tuple
+from typing import Dict, List, Tuple
 from flask import g
 from psycopg2 import sql
 from application import config
@@ -63,7 +63,6 @@ def run_query(sql_query, params = []):
         '''Runs the query and throws an exception if an error occurs '''
         db = get_db()
         cur = get_db_cursor()
-        as_string = sql_query.as_string(cur)
         cur.execute(sql_query, params)
         db.commit()
         return cur
@@ -88,14 +87,39 @@ def get_all_table_names():
     )
     return [x[0] for x in cur.fetchall()]
 
-def get_associated_tables(table_name):
+def get_table_attribs(table_name : str):
+    try:
+        cur = run_query(
+            "SELECT * FROM attribs.\"SCHEMA_ATTRIBS\" WHERE table_name = %s LIMIT 1",
+            [table_name]
+        )
+        row = cur.fetchone()
+        attrib_dict = {}
+        for description, value in zip(cur.description, row):
+            attrib_dict[description.name] = value
+        return attrib_dict
+            
+    except Exception as e:
+        print("An error occurred while fetching table attribs")
+
+def get_table_attribs(tables : List[str], role : str) -> Dict[str, Dict[str, str]]:
     '''
-    Gets all the tables associated with table_name
+    Performs a query to get attributes and privacy informaiton
+    for the provided tables given the user is of the provided role
     '''
-    run_query(
-        "SELECT associated_tables FROM attribs.\"SCHEMA_ATTRIBS\"" +
-        " WHERE table_name = %s",
-        table_name
-    ).fetchone()[0]
+    query = (
+        "SELECT accesible_fields, table_name, parent_table from " +
+        "attribs.\"SCHEMA_PRIVACY\" a inner join attribs.\"SCHEMA_ATTRIBS\" b " +
+        "ON b.id = a.attrib_table_id where role_name = %s and table_name = ANY(ARRAY[%s])"
+    )
+    cursor = run_query(query, [role, tables])
+    attribs = cursor.fetchall()
+    table_attribs = {}
+    for returned_row in attribs:
+        table_attribs[returned_row[1]] = {
+            "accesible_fields" : returned_row[0],
+            "parent_table" : returned_row[2]
+        } 
+    return table_attribs
 
 

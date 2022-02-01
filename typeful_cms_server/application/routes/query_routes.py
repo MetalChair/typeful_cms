@@ -1,6 +1,9 @@
+from ast import Str
 from collections import deque
 from typing import Deque, List
 from flask import Blueprint, request, g
+from matplotlib.pyplot import table
+from pandas import read_sql_query
 from application.database.database import *
 
 row_routes_blueprint = Blueprint("row_route_blueprint", __name__)
@@ -20,21 +23,6 @@ EXTRA_VALID_FIELDS = [
 
 def get_api_credential_tier():
     return "public"
-
-def get_fields_accessible_to_tier(tier: str, table_name: str) -> List:
-    privacy_table_name = table_name + "_PRIVACY"
-    privacy_query = sql.SQL(
-        "SELECT {credential_tier} FROM {table_name}"
-    ).format(
-        credential_tier = sql.Identifier(tier),
-        table_name = sql.Identifier(privacy_table_name)
-    )
-    try:
-        cur = run_query(privacy_query)
-        return list(cur.fetchone()[0])
-    except Exception as e:
-        g.error = "Unable to run this query"
-        raise e
 
 
 def find_operator_in_query_string(
@@ -63,25 +51,30 @@ def find_operator_in_query_string(
         raise Exception   
 
     return (found_operator, operator_pos)     
+
+
             
-def parse_query_string(query_string : bytes, encoding : str) -> List[Tuple[str, str, str]]:
+def parse_query_string(query_string : bytes, encoding : str) -> Tuple[List[Tuple[str, str, str]], List[str]]:
+    '''
+    Parses a query string and returns a tuple of format:
+    List of tuples(param_name, equality_operator, value)
+    List of tables to include in result
+    '''
     as_string = query_string.decode(encoding)
     split_arr = as_string.split("&")
-
-
+    includes_list = []
     query_params_list = []
     #TODO: Find a way to parse query strings that contain equality characters
     #TODO: Beat this up for parsing
     for query_item in split_arr:
         if(query_item.startswith("includes")):
-            includes_list = query_item.split("=")[1]
-            return
+            includes_list = [x.upper() for x in query_item.split("=")[1].split(",")]
         else:
             (found_operator, _) = find_operator_in_query_string(query_item)
             query_params_list.append(
                 query_item.partition(found_operator)
             )
-    return query_params_list
+    return (query_params_list, includes_list)
 
 def form_sql_from_query_list(
         list_of_query_tuples : List[Tuple[str, str, str]],
@@ -117,24 +110,21 @@ def map_results_to_dict(res_list : List, col_descriptors):
         mapped_object_list.append(current_obj)
     return mapped_object_list
 
+def form_query(table_name: str, query_clauses : List[Tuple[str, str, str]], 
+    attribs : Dict[str, Dict[str, str or List[Str]]]):
+    query = sql.SQL("SELECT {accesible_fields} FROM {table_name} {join_clauses}")
+
+
+    return
 
 @row_routes_blueprint.route("/<table_name>", methods = ["GET"])
-def perform_row_action(table_name : str):
+def run_posted_query(table_name : str):
     table_name = table_name.upper()
     #Get the credentials and fields that said credential can query
     credential_tier = get_api_credential_tier()
-    fields = get_fields_accessible_to_tier(credential_tier, table_name)
-    #fields.extend(EXTRA_VALID_FIELDS)
-    #TODO: Extract extra sql verbiage
-    parsed_query = parse_query_string(request.query_string, request.charset)
-
-    parsed_query = list(filter(lambda x : x[0] in fields, parsed_query))
-    sql_query = form_sql_from_query_list(parsed_query, fields, table_name)
-    
-    query_vals = [x[2] for x in parsed_query]
-
-    cur = run_query(sql_query, query_vals)
-    rows = cur.fetchmany(10)
-    mapped_results = map_results_to_dict(rows, cur.description)
+    query_clauses, includes = parse_query_string(
+        request.query_string, request.charset)
+    #Explicitly include the queried table in includes
+    field_attribs = get_table_attribs([*includes, table_name] , credential_tier)
     #Form the query
     return

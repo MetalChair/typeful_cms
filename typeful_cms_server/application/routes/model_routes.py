@@ -14,6 +14,12 @@ def infer_sql_type(object : any):
         returning the corresponding sql column type
     '''
     try:
+        if str(object).lower() in ["true", "false"]:
+            return "BOOLEAN"
+    except:
+        pass
+
+    try:
         as_int = int(object)
         if as_int == float(object):
             return "INTEGER"
@@ -31,6 +37,8 @@ def infer_sql_type(object : any):
         return "REAL"
     except:
         pass
+    
+
 
     if isinstance(object, list):
         return "TEXT[]"
@@ -53,7 +61,7 @@ def flatten_json_object(json_object : Dict) -> List[Tuple[str, dict, str, List[s
         for inner_schema_key in json_object:
             inner_schema_val = json_object.get(inner_schema_key)
             if type(inner_schema_val) is dict:
-                related_tables.append(inner_schema_key)
+                related_tables.append(inner_schema_key.upper())
                 flatten_json_helper(inner_schema_key,inner_schema_val, key)
             else:
                 obj_without_nested_dicts[inner_schema_key] = inner_schema_val
@@ -81,7 +89,6 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
     queries = []
     all_tables = get_all_table_names()
     for (table_name, schema, fk_table, related_tables) in schema_list:
-
         #Ensure the table name isn't already in use
         #Skip if it is
         if table_name.upper() in all_tables:
@@ -129,12 +136,12 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
 
         #Create a query that will create a schema attrib entry
         attrib_query = sql.SQL(
-                "INSERT INTO attribs.\"SCHEMA_ATTRIBS\"(table_name, associated_tables)" +
-                "VALUES (%s, %s) RETURNING id"  
+                "INSERT INTO attribs.\"SCHEMA_ATTRIBS\"(table_name, child_tables, parent_table)" +
+                "VALUES (%s, %s, %s) RETURNING id"  
         )
         #We have to run this first so we can get the PK out and create the FK
         #reference in the privacy column
-        cur = run_query(attrib_query, [table_name.upper(), related_tables])
+        cur = run_query(attrib_query, [table_name.upper(), related_tables, fk_table.upper()])
 
         id = cur.fetchone()[0]
 
@@ -242,13 +249,13 @@ def update_record(update_model : Dict[str, dict], update_action : str):
             query = sql.SQL("ALTER TABLE {table_name} {add_clauses}").format(
                     table_name = sql.Identifier(table_action.upper()),
                     add_clauses = sql.SQL(", ").join(
-                        sql.SQL("ADD {col_name} {col_type}").format(
+                        sql.SQL("ADD {col_name} {col_type} DEFAULT %s").format(
                             col_name = sql.Identifier(name),
                             col_type = sql.SQL(infer_sql_type(col_type))
                         ) for (name, col_type) in column_list.items()
                     )
                 )
-            cur = run_query(query)
+            cur = run_query(query, [x for (_, x) in column_list.items()])
         elif update_action == "drop":
             column_list : Dict[str, str] = table_val.get("columns")
             query = sql.SQL("ALTER TABLE {table_name} {add_clauses}").format(
@@ -260,33 +267,6 @@ def update_record(update_model : Dict[str, dict], update_action : str):
                     )
                 )
             cur = run_query(query)
-        elif update_action == "update":
-            #Get affiliated tables 
-            set_params : Dict = table_val.get("set")
-            where_params : Dict = table_val.get("where")
-            query = sql.SQL(
-                "UPDATE {table_name} SET {set_clauses} WHERE {where_clauses}"
-            ).format(
-                table_name =  sql.Identifier(table_action.upper()),
-                set_clauses = sql.SQL(", ").join(
-                    sql.SQL("{col_name} = {placeholder}")
-                        .format(
-                            col_name = sql.Identifier(x),
-                            placeholder = sql.Placeholder()
-                    ) for x in set_params
-                ),
-                where_clauses = sql.SQL(", ").join(
-                    sql.SQL("{col_name} = {placeholder}")
-                        .format(
-                            col_name = sql.Identifier(x),
-                            placeholder = sql.Placeholder()
-                    ) for x in where_params
-                )
-            )
-            cur = run_query(
-                query, 
-                list(set_params.values()) + list(where_params.values())
-            )
     return
 
 def drop_table(table_name : str):

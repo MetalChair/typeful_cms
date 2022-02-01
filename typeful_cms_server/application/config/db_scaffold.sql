@@ -15,7 +15,8 @@ create table if not exists attribs."APP_DEFINITION" (
 create table if not exists attribs."SCHEMA_ATTRIBS" (
     id serial PRIMARY KEY NOT NULL,
     table_name TEXT NOT NULL,
-    associated_tables TEXT[]
+    child_tables TEXT[],
+    parent_table TEXT
 );
 create table if not exists attribs."SCHEMA_PRIVACY" (
     id serial PRIMARY KEY NOT NULL,
