@@ -20,8 +20,8 @@ SAMPLE_CREATION_POST_DATA =   {
                 "city": "Gwenborough",
                 "zipcode": "92998-3874",
                 "geo": {
-                    "lat": "-37.3159",
-                    "lng": "81.1496"
+                    "lat": -37.3159,
+                    "lng": 81.1496
                 }
             },
             "favorite_number" : 5.555,
@@ -102,16 +102,16 @@ def test_model_creation(test_app : AppContext):
     #Assert
     responseJson = json.loads(res.data)
     succesful_response_object(responseJson)
-    cols_exist_on_table("USERS",["id","name","favorite_number"])
+    cols_exist_on_table("users",["id","name","favorite_number"])
 
 def test_delete_single_column(test_app : AppContext):
     #Arrange
     test_model_creation(test_app)
     res = test_app.app.test_client().patch("/Model", json = SAMPLE_DROP_SINGLE_DATA)
     succesful_response_object(json.loads(res.data))
-    cols_dont_exist_on_table("USERS", ["favorite_number"])
+    cols_dont_exist_on_table("users", ["favorite_number"])
     cols_exist_on_table(
-        "USERS", ["name", "username", "email", "aliases", "phone", "website"])
+        "users", ["name", "username", "email", "aliases", "phone", "website"])
 
 
 def test_add_single_column(test_app):
@@ -122,7 +122,7 @@ def test_add_single_column(test_app):
     res = test_app.app.test_client().patch("/Model", json = SAMPLE_ADD_SINGLE_DATA)
     succesful_response_object(json.loads(res.data))
     #assert
-    cols_exist_on_table("USERS", ["likes_pretzels"])
+    cols_exist_on_table("users", ["likes_pretzels"])
 
 
 def test_add_many_column(test_app):
@@ -134,7 +134,7 @@ def test_add_many_column(test_app):
 
     #assert
     succesful_response_object(json.loads(res.data))
-    cols_exist_on_table("USERS", ["likes_pretzels", "likes_cracker_jacks"])
+    cols_exist_on_table("users", ["likes_pretzels", "likes_cracker_jacks"])
 
 
 def test_delete_many_column(test_app):
@@ -153,7 +153,7 @@ def test_typings_on_creation(test_app):
 
     #act
     cur = get_db_cursor()
-    cur.execute("SELECT * FROM public.\"USERS\"")
+    cur.execute("SELECT * FROM public.\"users\"")
 
     #assert
     for col in cur.description:

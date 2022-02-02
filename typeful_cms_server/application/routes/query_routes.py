@@ -1,14 +1,16 @@
-from ast import Str
+from ast import Str, operator
 from collections import deque
+from ntpath import join
 from typing import Deque, List
 from xml.etree.ElementInclude import include
 from attr import attr
 from flask import Blueprint, request, g
 from matplotlib.pyplot import table
 from pandas import read_sql_query
-from sympy import false
+from pytest import param
+from sympy import false, true
 from application.database.database import *
-from typeful_cms_server.application.models.message_reponse import message_response
+from application.models.message_reponse import message_response
 
 row_routes_blueprint = Blueprint("row_route_blueprint", __name__)
 
@@ -72,7 +74,7 @@ def parse_query_string(query_string : bytes, encoding : str) -> Tuple[List[Tuple
     #TODO: Beat this up for parsing
     for query_item in split_arr:
         if(query_item.startswith("includes")):
-            includes_list = [x.upper() for x in query_item.split("=")[1].split(",")]
+            includes_list = [x for x in query_item.split("=")[1].split(",")]
         else:
             (found_operator, _) = find_operator_in_query_string(query_item)
             query_params_list.append(
@@ -83,10 +85,6 @@ def parse_query_string(query_string : bytes, encoding : str) -> Tuple[List[Tuple
 
 def schemify_query_result(cursor: Cursor, table_name : str, attribs : Dict[str, Dict[str, str]]):
 
-    def schemify_helper(cur_table, attribs, prop_name, cur_dict):
-        if cur_table in attribs and "parent_table" in attribs[cur_table]:
-            schemify_helper(attribs[cur_table]["parent_table"], attribs, prop_name, cur_dict)
-        print(cur_table)
     '''
         Takes a cursor that has performed a query and the list of all
         tables queries and "reschemifies" it. When querying with sql and
@@ -104,61 +102,32 @@ def schemify_query_result(cursor: Cursor, table_name : str, attribs : Dict[str, 
         form a new nested dict object
     '''
     query_result = cursor.fetchall()
-    dict_to_return = {}
-    dict_to_return[table_name.lower()] = []
+    dict_to_return = {
+        table_name : []
+    }
     for result in query_result:
         new_dict_item = {}
         for prop, desc in zip(result, cursor.description):
-            if desc.name.startswith(table_name):
-                prop_name = desc.name[len(table_name) + 1 :]
-                new_dict_item[prop_name] = prop
-            else:
-                for name in attribs.keys():
-                    if desc.name.startswith(name):
-                        prop_name = desc.name[len(name) + 1:]
-                        schemify_helper(name, attribs, prop_name)
-                        # if name.lower() in new_dict_item:
-                        #     new_dict_item[name.lower()][prop_name] = prop
-                        # else:
-                        #     new_dict_item[name.lower()] = {prop_name : prop}
-                        break
-        dict_to_return[table_name.lower()].append(new_dict_item)
+            #We need to sort the table names by descending length
+            #this prevents an issue where an incorrect match could occur
+            #IE. Table named java and javascript, query on java
+            sorted_table_names = list(attribs.keys())
+            sorted_table_names.sort(key = len, reverse=True)
+            for name in sorted_table_names:
+                if desc.name.startswith(name):
+                    if name not in new_dict_item:
+                        new_dict_item[name] = {}
+                    prop_name = desc.name[len(name) + 1 :]
+                    new_dict_item[name][prop_name] = prop
+                    break
+        #Now, join the objects on parent tables
+        for obj_table_name, obj in new_dict_item.items():
+            if ("parent_table" in attribs[obj_table_name] and 
+                attribs[obj_table_name]["parent_table"]):
+                new_dict_item[attribs[obj_table_name]["parent_table"]][obj_table_name] = obj
+        dict_to_return[table_name].append(new_dict_item[table_name])
 
     return dict_to_return
-
-def form_sql_from_query_list(
-        list_of_query_tuples : List[Tuple[str, str, str]],
-        fields : List[str],
-        table_name : str
-    ) -> sql.SQL:
-
-    where_clause = sql.SQL(",").join(
-        sql.SQL("{col_name} {operator} {col_val}").format(
-            col_name = sql.Identifier(x[0]),
-            operator = sql.SQL(x[1]),
-            col_val = sql.Placeholder()
-        ) for x in list_of_query_tuples
-    )
-
-    query = sql.SQL(
-        "SELECT {query_cols} FROM " + 
-        "{table_name} WHERE {where_clause}"
-    ).format(
-        query_cols = sql.SQL(",").join(sql.Identifier(x) for x in fields),
-        table_name = sql.Identifier(table_name),
-        where_clause = where_clause
-    )
-
-    return query
-
-def map_results_to_dict(res_list : List, col_descriptors):
-    mapped_object_list = []
-    for result in res_list:
-        current_obj = {}
-        for field, name in zip(result, col_descriptors):
-            current_obj[name[0]] = field
-        mapped_object_list.append(current_obj)
-    return mapped_object_list
 
 def form_query(
     table_name: str, 
@@ -204,9 +173,9 @@ def form_query(
                     "ON {parent_alias}.{parent_join_clause} = {child_alias}.{child_join_clause}"
                 ).format(
                     table_name = sql.Identifier(table),
-                    parent_join_clause = sql.Identifier(parent_table.lower() + "_id"),
+                    parent_join_clause = sql.Identifier(parent_table + "_id"),
                     child_join_clause = sql.Identifier(
-                        (parent_table.lower() + "_id")
+                        (parent_table + "_id")
                     ),
                     parent_alias = sql.SQL(parent_alias),
                     child_alias = sql.SQL(child_alias)
@@ -215,7 +184,28 @@ def form_query(
         else:
             raise Exception("No parent table found for includes table")
 
-    query = sql.SQL("SELECT {accesible_fields} FROM {table_name} {table_alias} {join_clauses}").format(
+    sorted_col_name = includes + [table_name]
+    sorted_col_name.sort(key = len, reverse=True)
+    aliased_wheres = []
+    #alias where cluauses
+    for col_name, operator, val in query_clauses:
+        for name in sorted_col_name:
+            if col_name.startswith(name):
+                #Find a matching col_name
+                alias = attribs[name]["alias"]
+                #Alias it
+                aliased_wheres.append(
+                    (
+                        alias, 
+                        col_name[len(name) + 1: ],
+                        operator,
+                        val
+                    )
+                )
+                break
+    query = sql.SQL(
+        "SELECT {accesible_fields} FROM {table_name} {table_alias} {join_clauses} WHERE {where_clauses}"
+        ).format(
         accesible_fields = sql.SQL(", ").join(
             sql.SQL("{table_alias}.{col_name} AS {alias}").format(
                 table_alias = sql.SQL(x),
@@ -224,15 +214,22 @@ def form_query(
             ) for x, y, z in to_query_fields),
         table_name = sql.Identifier(table_name),
         join_clauses = sql.SQL("").join(x for x in join_clauses),
-        table_alias = sql.SQL(attribs[table_name]["alias"])
+        table_alias = sql.SQL(attribs[table_name]["alias"]),
+        where_clauses = sql.SQL(" AND ").join(
+            sql.SQL("{alias}.{column_name} {eq} {value}").format(
+                alias = sql.SQL(alias),
+                column_name = sql.Identifier(col_name),
+                eq = sql.SQL(operator),
+                value = sql.Placeholder()
+            ) for alias, col_name, operator, val in aliased_wheres
+        )
     )
     as_string = query.as_string(get_db_cursor())
 
-    return query
+    return (query, [x[3] for x in aliased_wheres])
 
 @row_routes_blueprint.route("/<table_name>", methods = ["GET"])
 def run_posted_query(table_name : str):
-    table_name = table_name.upper()
     #Get the credentials and fields that said credential can query
     credential_tier = get_api_credential_tier()
     query_clauses, includes = parse_query_string(
@@ -240,10 +237,10 @@ def run_posted_query(table_name : str):
     all_tables = [*includes, table_name]
     #Explicitly include the queried table in includes
     field_attribs = get_table_attribs(all_tables, credential_tier)
-    query = form_query(table_name, query_clauses, field_attribs, includes)
+    query, params = form_query(table_name, query_clauses, field_attribs, includes)
     response = message_response(status=True)
     try:
-        cursor = run_query(query)
+        cursor = run_query(query, params)
         # as_dict = query_to_dict(cursor)
         as_schema = schemify_query_result(cursor, table_name, field_attribs)
         response.result = as_schema

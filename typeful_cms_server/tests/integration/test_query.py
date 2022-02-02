@@ -2,11 +2,11 @@ import json
 from unicodedata import name
 from flask.ctx import AppContext
 import test_models
-from typeful_cms_server.tests.helpers import succesful_response_object, compare_dicts_on_keys
+from tests.helpers import succesful_response_object, compare_dicts_on_keys
 def test_simple_query(test_app : AppContext):
     test_models.test_model_creation(test_app)
     res = test_app.app.test_client().get(
-        "/Users?name=Leanne Graham&includes=Address,Company,Geo"
+        "/users?address.city=Gwenborough&includes=address,company,geo"
     )
     returned_json = json.loads(res.data)
     succesful_response_object(returned_json)
@@ -20,8 +20,8 @@ def test_simple_query(test_app : AppContext):
             "city": "Gwenborough",
             "zipcode": "92998-3874",
             "geo": {
-                "lat": "-37.3159",
-                "lng": "81.1496"
+                "lat": -37.3159,
+                "lng": 81.1496
             }
         }
 

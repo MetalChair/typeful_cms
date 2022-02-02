@@ -61,7 +61,7 @@ def flatten_json_object(json_object : Dict) -> List[Tuple[str, dict, str, List[s
         for inner_schema_key in json_object:
             inner_schema_val = json_object.get(inner_schema_key)
             if type(inner_schema_val) is dict:
-                related_tables.append(inner_schema_key.upper())
+                related_tables.append(inner_schema_key)
                 flatten_json_helper(inner_schema_key,inner_schema_val, key)
             else:
                 obj_without_nested_dicts[inner_schema_key] = inner_schema_val
@@ -91,11 +91,11 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
     for (table_name, schema, fk_table, related_tables) in schema_list:
         #Ensure the table name isn't already in use
         #Skip if it is
-        if table_name.upper() in all_tables:
+        if table_name in all_tables:
             continue
         
         #Ensure the table name provided isn't a reserved word
-        if table_name.upper() in PSQL_RESERVED_KEYWORDS:
+        if table_name in PSQL_RESERVED_KEYWORDS:
             g.error = "Table name {name} is a reserved keyword".format(
                 name = table_name
             )
@@ -115,7 +115,7 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
                 sql.SQL("{fkey_col_name} INTEGER REFERENCES {fkey_table} ({fkey_col_name})")
                     .format(
                         fkey_col_name = sql.Identifier(fk_table + "_id"),
-                        fkey_table = sql.Identifier(fk_table.upper())
+                        fkey_table = sql.Identifier(fk_table)
                     )
             )
         for schema_item in schema:
@@ -129,7 +129,7 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
                     )
             )
         query = sql.SQL("CREATE TABLE {table_name} ({create_cols})").format(
-            table_name = sql.Identifier(table_name.upper()),
+            table_name = sql.Identifier(table_name),
             create_cols = sql.SQL(",").join(x for x in column_creation_lines)
         )
         queries.append((query, []))
@@ -141,7 +141,7 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
         )
         #We have to run this first so we can get the PK out and create the FK
         #reference in the privacy column
-        cur = run_query(attrib_query, [table_name.upper(), related_tables, fk_table.upper()])
+        cur = run_query(attrib_query, [table_name, related_tables, fk_table])
 
         id = cur.fetchone()[0]
 
@@ -152,7 +152,7 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
         )
         queries.append((privacy_query, ["public",list(schema.keys()), id]))
 
-        all_tables.append(table_name.upper())
+        all_tables.append(table_name)
     run_queries(queries)
 
 def insert_records(schema_list : List[Tuple[str, dict, str]]):
@@ -223,7 +223,7 @@ def insert_records(schema_list : List[Tuple[str, dict, str]]):
             cur = run_query(
                 sql.SQL("INSERT INTO {table_name}({cols}) VALUES ({vals}) RETURNING {id} ")
                 .format(
-                    table_name = sql.Identifier(table_name.upper()),
+                    table_name = sql.Identifier(table_name),
                     cols = sql.SQL(", ").join(
                             sql.Identifier(x) for x in col_val_map.keys()
                         ),
@@ -247,7 +247,7 @@ def update_record(update_model : Dict[str, dict], update_action : str):
         if update_action == "add":
             column_list : Dict[str, str] = table_val.get("columns")
             query = sql.SQL("ALTER TABLE {table_name} {add_clauses}").format(
-                    table_name = sql.Identifier(table_action.upper()),
+                    table_name = sql.Identifier(table_action),
                     add_clauses = sql.SQL(", ").join(
                         sql.SQL("ADD {col_name} {col_type} DEFAULT %s").format(
                             col_name = sql.Identifier(name),
@@ -259,7 +259,7 @@ def update_record(update_model : Dict[str, dict], update_action : str):
         elif update_action == "drop":
             column_list : Dict[str, str] = table_val.get("columns")
             query = sql.SQL("ALTER TABLE {table_name} {add_clauses}").format(
-                    table_name = sql.Identifier(table_action.upper()),
+                    table_name = sql.Identifier(table_action),
                     add_clauses = sql.SQL(", ").join(
                         sql.SQL("DROP {col_name}").format(
                             col_name = sql.Identifier(name),
@@ -271,7 +271,7 @@ def update_record(update_model : Dict[str, dict], update_action : str):
 
 def drop_table(table_name : str):
     query = sql.SQL("DROP TABLE {table_name}").format(
-        table_name = sql.Identifier(table_name.upper())
+        table_name = sql.Identifier(table_name)
     )
     run_query(query)
 
