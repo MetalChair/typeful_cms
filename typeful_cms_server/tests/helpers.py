@@ -51,6 +51,10 @@ def cols_exist_on_table(table_name: str, col_names : List[str]):
         )
     return
 
+def compare_dicts_on_keys(dict1, dict2, list_of_keys):
+    for key in list_of_keys:
+        assert dict1[list_of_keys] == dict2[list_of_keys]
+
 def succesful_response_object(responseJson):
     assert "actionSucceeded" in responseJson
     assert "errorMessage" in responseJson

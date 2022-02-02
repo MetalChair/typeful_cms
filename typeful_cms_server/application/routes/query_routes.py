@@ -80,6 +80,52 @@ def parse_query_string(query_string : bytes, encoding : str) -> Tuple[List[Tuple
             )
     return (query_params_list, includes_list)
 
+
+def schemify_query_result(cursor: Cursor, table_name : str, attribs : Dict[str, Dict[str, str]]):
+
+    def schemify_helper(cur_table, attribs, prop_name, cur_dict):
+        if cur_table in attribs and "parent_table" in attribs[cur_table]:
+            schemify_helper(attribs[cur_table]["parent_table"], attribs, prop_name, cur_dict)
+        print(cur_table)
+    '''
+        Takes a cursor that has performed a query and the list of all
+        tables queries and "reschemifies" it. When querying with sql and
+        joining, the object comes back flattened:
+
+        "test" : {
+            "hello":{
+                "goodbye" : "!"
+            }
+        }
+
+        would return as a flat list. The query run from form_query aliases all
+        returned sql columns of the format <table_name>_<col_name>. In this
+        call, we use this information and a list of all the tables queried to
+        form a new nested dict object
+    '''
+    query_result = cursor.fetchall()
+    dict_to_return = {}
+    dict_to_return[table_name.lower()] = []
+    for result in query_result:
+        new_dict_item = {}
+        for prop, desc in zip(result, cursor.description):
+            if desc.name.startswith(table_name):
+                prop_name = desc.name[len(table_name) + 1 :]
+                new_dict_item[prop_name] = prop
+            else:
+                for name in attribs.keys():
+                    if desc.name.startswith(name):
+                        prop_name = desc.name[len(name) + 1:]
+                        schemify_helper(name, attribs, prop_name)
+                        # if name.lower() in new_dict_item:
+                        #     new_dict_item[name.lower()][prop_name] = prop
+                        # else:
+                        #     new_dict_item[name.lower()] = {prop_name : prop}
+                        break
+        dict_to_return[table_name.lower()].append(new_dict_item)
+
+    return dict_to_return
+
 def form_sql_from_query_list(
         list_of_query_tuples : List[Tuple[str, str, str]],
         fields : List[str],
@@ -114,8 +160,11 @@ def map_results_to_dict(res_list : List, col_descriptors):
         mapped_object_list.append(current_obj)
     return mapped_object_list
 
-def form_query(table_name: str, query_clauses : List[Tuple[str, str, str]], 
-    attribs : Dict[str, Dict[str, str or List[Str]]], includes : List[str]):
+def form_query(
+    table_name: str, 
+    query_clauses : List[Tuple[str, str, str]], 
+    attribs : Dict[str, Dict[str, str or List[Str]]], 
+    includes : List[str]):
     '''
         Takes a table_name to be queried, a list of where clauses of the form
         (field, equality_op, value), a list of tables to include, and 
@@ -134,11 +183,11 @@ def form_query(table_name: str, query_clauses : List[Tuple[str, str, str]],
     #Get all the fields to be queried
     to_query_fields = []
     alias = 0
-    for _, properties in attribs.items():
+    for attribs_table_name, properties in attribs.items():
         properties["alias"] = "t" + str(alias)
         if "accesible_fields" in properties:
             to_query_fields.extend(
-                (properties["alias"], x) 
+                (properties["alias"], x, attribs_table_name) 
                 for x in properties["accesible_fields"]
             )
         alias = alias + 1
@@ -166,16 +215,18 @@ def form_query(table_name: str, query_clauses : List[Tuple[str, str, str]],
         else:
             raise Exception("No parent table found for includes table")
 
-    query = sql.SQL("SELECT {accesible_fields} FROM {table_name} {alias} {join_clauses}").format(
+    query = sql.SQL("SELECT {accesible_fields} FROM {table_name} {table_alias} {join_clauses}").format(
         accesible_fields = sql.SQL(", ").join(
-            sql.SQL("{table_alias}.{col_name}").format(
+            sql.SQL("{table_alias}.{col_name} AS {alias}").format(
                 table_alias = sql.SQL(x),
-                col_name = sql.Identifier(y)
-            ) for x, y in to_query_fields),
+                col_name = sql.Identifier(y),
+                alias = sql.Identifier((z + "_" + y))
+            ) for x, y, z in to_query_fields),
         table_name = sql.Identifier(table_name),
         join_clauses = sql.SQL("").join(x for x in join_clauses),
-        alias = sql.SQL(attribs[table_name]["alias"])
+        table_alias = sql.SQL(attribs[table_name]["alias"])
     )
+    as_string = query.as_string(get_db_cursor())
 
     return query
 
@@ -186,16 +237,19 @@ def run_posted_query(table_name : str):
     credential_tier = get_api_credential_tier()
     query_clauses, includes = parse_query_string(
         request.query_string, request.charset)
+    all_tables = [*includes, table_name]
     #Explicitly include the queried table in includes
-    field_attribs = get_table_attribs([*includes, table_name] , credential_tier)
+    field_attribs = get_table_attribs(all_tables, credential_tier)
     query = form_query(table_name, query_clauses, field_attribs, includes)
-    response = message_response(False)
+    response = message_response(status=True)
     try:
-        query_res = run_query(query).fetchall()
-        return query_res
+        cursor = run_query(query)
+        # as_dict = query_to_dict(cursor)
+        as_schema = schemify_query_result(cursor, table_name, field_attribs)
+        response.result = as_schema
     except Exception as e:
         response.status = False
         response.error = str(e)
         
     #Form the query
-    return response
+    return response.as_dict()

@@ -1,4 +1,5 @@
 import enum
+from sqlite3 import Cursor
 import psycopg2
 from typing import Dict, List, Tuple
 from flask import g
@@ -101,6 +102,18 @@ def get_table_attribs(table_name : str):
             
     except Exception as e:
         print("An error occurred while fetching table attribs")
+
+def query_to_dict(cursor : Cursor):
+    query_result = cursor.fetchall()
+    dict_to_return = {}
+    dict_to_return["result"] = []
+    for result in query_result:
+        new_dict_item = {}
+        for prop, desc in zip(result, cursor.description):
+            new_dict_item[desc.name] = prop
+        dict_to_return["result"].append(new_dict_item)
+
+    return dict_to_return
 
 def get_table_attribs(tables : List[str], role : str) -> Dict[str, Dict[str, str]]:
     '''

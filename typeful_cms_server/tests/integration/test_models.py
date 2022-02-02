@@ -33,37 +33,8 @@ SAMPLE_CREATION_POST_DATA =   {
                 "catchPhrase": "Multi-layered client-server neural-net",
                 "bs": "harness real-time e-markets"
             }
-        },
-        {
-            "id": 1,
-            "name": "Leanne Graham",
-            "username": "Bret",
-            "email": "Sincere@april.biz",
-            "address": {
-                "street": "Kulas Light",
-                "suite": "Apt. 556",
-                "city": "Gwenborough",
-                "zipcode": "92998-3874",
-                "geo": {
-                    "lat": "-37.3159",
-                    "lng": "81.1496"
-                }
-            },
-            "favorite_number" : 5.555,
-            "aliases" : ["greg", 5, "Daniel"],
-            "phone": "1-770-736-8031 x56442",
-            "website": "hildegard.org",
-            "company": {
-                "name": "Romaguera-Crona",
-                "catchPhrase": "Multi-layered client-server neural-net",
-                "bs": "harness real-time e-markets"
-            }
         }
-    ],
-    "Butts": {
-        "hello" : "Goodbye"
-    }
-    
+    ]
 }
 
 SAMPLE_DROP_SINGLE_DATA = {
@@ -131,7 +102,6 @@ def test_model_creation(test_app : AppContext):
     #Assert
     responseJson = json.loads(res.data)
     succesful_response_object(responseJson)
-    cols_exist_on_table("BUTTS", ["hello"])
     cols_exist_on_table("USERS",["id","name","favorite_number"])
 
 def test_delete_single_column(test_app : AppContext):
