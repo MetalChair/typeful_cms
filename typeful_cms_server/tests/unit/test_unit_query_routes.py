@@ -33,6 +33,7 @@ def test_get_table_attribs(test_app : AppContext):
     assert attribs['users']['accesible_fields'] == ['aliases','email','favorite_number','id','name','phone','username','website']
     assert attribs['geo']['accesible_fields'] == ['lat','lng']
     assert attribs['geo']['parent_table'] == 'address'
+    assert attribs['address']['parent_table'] == 'users'
     return
 
     
