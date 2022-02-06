@@ -1,3 +1,5 @@
+from io import BytesIO
+import os
 from pickle import TRUE
 from typing import List
 from flask import json
@@ -6,6 +8,11 @@ from psycopg2 import sql
 
 from application.database.database import get_db, get_db_cursor
 from tests.helpers import *
+
+TEST_FILE_NAMES = [
+    "Test.svg",
+    "Test2.svg"
+]
 
 SAMPLE_CREATION_POST_DATA =   {
     "users" : [
@@ -146,6 +153,19 @@ def test_delete_many_column(test_app):
     
     #assert
     cols_dont_exist_on_table("USERS", ["name", "favorite_number"])
+
+def test_media_upload(test_app : AppContext):
+    test_model_creation(test_app)
+    files = [open(os.path.dirname(__file__)+ "/" + fpath, 'rb') for fpath in TEST_FILE_NAMES]
+
+    data =  {}
+    for idx, file in enumerate(files):
+        data["file" + str(idx)] = file.read()
+    res = test_app.app.test_client().post(
+        "/Model/media", 
+        data = data, 
+        content_type = 'multipart/form-data'    
+    )
 
 def test_typings_on_creation(test_app):
     #arrange

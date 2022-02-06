@@ -1,4 +1,5 @@
 {
     "TESTING": "True",
-    "DEBUG": "True"
+    "DEBUG": "True",
+    "UPLOAD_FOLDER": "/Uploads"
 }

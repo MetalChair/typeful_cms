@@ -27,7 +27,21 @@ create table if not exists attribs."SCHEMA_PRIVACY" (
         FOREIGN KEY(attrib_table_id) 
         REFERENCES attribs."SCHEMA_ATTRIBS"(id)  
 );
+create table if not exists attribs."MEDIA_RELATIONS" (
+    id serial PRIMARY KEY NOT NULL,
+    table_name TEXT,
+    table_record_id INTEGER,
+    media_record_id INTEGER,
+    accesible_to TEXT[]
+);
 
+create table if not exists public."media" (
+    id serial PRIMARY KEY NOT NULL,
+    upload_date timestamp,
+    url TEXT,
+    name TEXT,
+    tags TEXT[]
+);
 
 GRANT ALL ON SCHEMA attribs TO typefulserver;
 GRANT ALL ON SCHEMA public TO typefulserver;

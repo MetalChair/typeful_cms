@@ -1,11 +1,11 @@
+import os
 from typing import Dict, List, Tuple, Deque
-from flask import Blueprint, request, g
+from flask import Blueprint, request, g, current_app
 from collections import deque
-
+from werkzeug.utils import secure_filename
 from application.database.database import *
 from application.models.message_reponse import message_response
 from application.util.psql_reserved_keywords import PSQL_RESERVED_KEYWORDS
-
 model_routes_blueprint = Blueprint("model_route_blueprint", __name__)
 
 def infer_sql_type(object : any):
@@ -298,6 +298,21 @@ def perform_model_action():
     except Exception as e:
         response_object = message_response(False, e_msg= getattr(g, "error", "Unknown Error"))
         return response_object.as_dict()
+
+@model_routes_blueprint.route("/Model/media", methods = ["POST"])
+def perform_media_action():
+    act_type = DB_ACTION_TYPE.from_post_method(request.method)
+    if act_type == DB_ACTION_TYPE.CREATE:
+        for fileName, fileObj in request.files.items():
+            fname = secure_filename(fileObj.filename)
+            path = os.path.join(                   
+                current_app.config['UPLOAD_FOLDER'], 
+                fname
+            )
+            fileObj.save(
+                path
+            )
+        return
 
 @model_routes_blueprint.route("/Model/<table_name>", methods = ["DELETE"])
 def perform_delete_action(table_name):
