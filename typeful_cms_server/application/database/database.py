@@ -1,5 +1,7 @@
+from datetime import date
+import datetime
 import enum
-from sqlite3 import Cursor
+from sqlite3 import Cursor, Date
 import psycopg2
 from typing import Dict, List, Tuple
 from flask import g
@@ -134,5 +136,25 @@ def get_table_attribs(tables : List[str], role : str) -> Dict[str, Dict[str, str
             "parent_table" : returned_row[2]
         } 
     return table_attribs
+
+def file_exists(file_name):
+    '''
+        Return indicates the existance of a file with given file_name in media
+        library
+    '''
+    cur = run_query(
+        "SELECT * FROM public.media WHERE name like %s",
+        [file_name]
+    )
+    return cur.rowcount > 0 
+
+def create_file_record(file_name, file):
+    cur = run_query(
+        "INSERT INTO public.media (name, upload_date) VALUES (%s, %s)",
+        [file_name, datetime.datetime.now()]
+    )
+    return
+
+
 
 

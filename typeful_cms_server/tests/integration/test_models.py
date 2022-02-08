@@ -6,7 +6,7 @@ from flask import json
 from flask.ctx import AppContext
 from psycopg2 import sql
 
-from application.database.database import get_db, get_db_cursor
+from application.database.database import get_db, get_db_cursor, run_query
 from tests.helpers import *
 
 TEST_FILE_NAMES = [
@@ -87,7 +87,7 @@ SAMPLE_ADD_MANY_DATA = {
 }
 
 EXPECTED_COL_TYPE_IDS = {
-    "users_id" : 23,
+    "users_int_id" : 23,
     "aliases" : 1009,
     "email" : 25,
     "favorite_number" : 700,
@@ -95,7 +95,8 @@ EXPECTED_COL_TYPE_IDS = {
     "name" : 25,
     "phone" : 25,
     "username" : 25,
-    "website" : 25
+    "website" : 25,
+    "users_ext_id" : 2950
 }
 
 
@@ -159,13 +160,15 @@ def test_media_upload(test_app : AppContext):
     files = [open(os.path.dirname(__file__)+ "/" + fpath, 'rb') for fpath in TEST_FILE_NAMES]
 
     data =  {}
-    for idx, file in enumerate(files):
-        data["file" + str(idx)] = file.read()
+    data["files[]"] = [file for file in files]
     res = test_app.app.test_client().post(
         "/Model/media", 
         data = data, 
         content_type = 'multipart/form-data'    
     )
+    succesful_response_object(json.loads(res.data))
+    cur = run_query("SELECT * FROM public.media")
+    assert cur.rowcount == 2
 
 def test_typings_on_creation(test_app):
     #arrange

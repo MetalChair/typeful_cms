@@ -173,9 +173,9 @@ def form_query(
                     "ON {parent_alias}.{parent_join_clause} = {child_alias}.{child_join_clause}"
                 ).format(
                     table_name = sql.Identifier(table),
-                    parent_join_clause = sql.Identifier(parent_table + "_id"),
+                    parent_join_clause = sql.Identifier(parent_table + "_int_id"),
                     child_join_clause = sql.Identifier(
-                        (parent_table + "_id")
+                        (parent_table + "_int_id")
                     ),
                     parent_alias = sql.SQL(parent_alias),
                     child_alias = sql.SQL(child_alias)

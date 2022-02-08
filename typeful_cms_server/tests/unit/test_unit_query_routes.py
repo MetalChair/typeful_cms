@@ -1,4 +1,4 @@
-from application.routes.query_routes import parse_query_string, form_query
+from application.routes.query.query_routes import parse_query_string, form_query
 from flask.ctx import AppContext
 from application.database.database import get_table_attribs
 

@@ -1,5 +1,5 @@
 {
     "TESTING": "True",
     "DEBUG": "True",
-    "UPLOAD_FOLDER": "/Uploads"
+    "UPLOAD_DIR": "typeful_cms_server/uploads"
 }

@@ -1,4 +1,5 @@
 import os
+import shutil
 from sys import implementation
 from flask.app import Flask
 from flask import g
@@ -15,9 +16,12 @@ def test_app() -> AppContext:
     print("Initializing app")
     app = init_app()
     app.config.from_file(TEST_CONFIG_PATH, json.load) #Load the testing config
+    if os.path.exists(app.config["UPLOAD_DIR"]):
+        shutil.rmtree(app.config["UPLOAD_DIR"])
     with app.app_context() as context:
         g.db = psycopg2.connect("dbname=typeful_test user=typefulserver")
         scaffold_db(g.db)
         yield context
+        
 
         

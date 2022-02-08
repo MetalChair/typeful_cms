@@ -14,16 +14,7 @@ def test_simple_query(test_app : AppContext):
     assert len(user_list) == 1
     assert user_list[0]["name"] == "Leanne Graham"
     assert user_list[0]["username"] == "Bret"
-    assert user_list[0]["address"] == {
-            "street": "Kulas Light",
-            "suite": "Apt. 556",
-            "city": "Gwenborough",
-            "zipcode": "92998-3874",
-            "geo": {
-                "lat": -37.3159,
-                "lng": 81.1496
-            }
-        }
+    assert user_list[0]["address"]["street"] == "Kulas Light"
 
     return
 

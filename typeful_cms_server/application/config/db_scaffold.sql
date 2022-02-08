@@ -31,8 +31,7 @@ create table if not exists attribs."MEDIA_RELATIONS" (
     id serial PRIMARY KEY NOT NULL,
     table_name TEXT,
     table_record_id INTEGER,
-    media_record_id INTEGER,
-    accesible_to TEXT[]
+    media_record_id INTEGER
 );
 
 create table if not exists public."media" (
@@ -40,9 +39,11 @@ create table if not exists public."media" (
     upload_date timestamp,
     url TEXT,
     name TEXT,
-    tags TEXT[]
+    tags TEXT[],
+    accesible_to TEXT[]
 );
 
 GRANT ALL ON SCHEMA attribs TO typefulserver;
 GRANT ALL ON SCHEMA public TO typefulserver;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 insert into attribs."APP_DEFINITION" (item_key, item_val) VALUES ('APP_INIT','TRUE')

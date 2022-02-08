@@ -2,6 +2,7 @@ import os
 from typing import Dict, List, Tuple, Deque
 from flask import Blueprint, request, g, current_app
 from collections import deque
+from sympy import false
 from werkzeug.utils import secure_filename
 from application.database.database import *
 from application.models.message_reponse import message_response
@@ -107,14 +108,20 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
         column_creation_lines.append(
             sql.SQL("{table_name} SERIAL PRIMARY KEY")
                 .format(
-                    table_name = sql.Identifier(table_name + "_id")
+                    table_name = sql.Identifier(table_name + "_int_id")
+                )
+        )
+        column_creation_lines.append(
+            sql.SQL("{ext_id_name} UUID DEFAULT uuid_generate_v4()")
+                .format(
+                    ext_id_name = sql.Identifier(table_name + "_ext_id")
                 )
         )
         if fk_table:
             column_creation_lines.append(
                 sql.SQL("{fkey_col_name} INTEGER REFERENCES {fkey_table} ({fkey_col_name})")
                     .format(
-                        fkey_col_name = sql.Identifier(fk_table + "_id"),
+                        fkey_col_name = sql.Identifier(fk_table + "_int_id"),
                         fkey_table = sql.Identifier(fk_table)
                     )
             )
@@ -150,7 +157,13 @@ def create_tables_from_json_schema(schema_list : List[Tuple[str, dict, str]]):
             "(role_name, accesible_fields, attrib_table_id)" +
             "VALUES (%s, %s, %s)"
         )
-        queries.append((privacy_query, ["public",list(schema.keys()), id]))
+        queries.append(
+            (
+                privacy_query, 
+                #Explicitly specify that ext_id is publicly accesible
+                ["public",list(schema.keys()) + [table_name + "_ext_id"], id]
+            )
+        )
 
         all_tables.append(table_name)
     run_queries(queries)
@@ -211,7 +224,7 @@ def insert_records(schema_list : List[Tuple[str, dict, str]]):
 
         #Map the foreign column id value
         if fk_table:
-            col_val_map[fk_table + "_id"] = parent_record_ctxs[0][1]
+            col_val_map[fk_table + "_int_id"] = parent_record_ctxs[0][1]
 
         for key in schema:
             val = schema.get(key)
@@ -230,7 +243,7 @@ def insert_records(schema_list : List[Tuple[str, dict, str]]):
                     vals = sql.SQL(", ").join(
                         sql.Literal(col_val_map[x]) for x in col_val_map.keys()
                     ),
-                    id = sql.Identifier(table_name + "_id")
+                    id = sql.Identifier(table_name + "_int_id")
                 )
             )
             inserted_id = cur.fetchone()[0]
@@ -303,16 +316,23 @@ def perform_model_action():
 def perform_media_action():
     act_type = DB_ACTION_TYPE.from_post_method(request.method)
     if act_type == DB_ACTION_TYPE.CREATE:
-        for fileName, fileObj in request.files.items():
-            fname = secure_filename(fileObj.filename)
-            path = os.path.join(                   
-                current_app.config['UPLOAD_FOLDER'], 
-                fname
-            )
-            fileObj.save(
-                path
-            )
-        return
+        response = message_response(False)
+        for file in request.files.getlist('files[]'):
+            fname = secure_filename(os.path.basename(file.filename))
+            # Determine if file path exists
+            if not file_exists(fname):
+                try:
+                    create_file_record(fname, file)
+                    if not os.path.exists(current_app.config["UPLOAD_DIR"]):
+                        os.mkdir(current_app.config["UPLOAD_DIR"])
+                    path = os.path.join(current_app.config["UPLOAD_DIR"], fname)
+                    file.save(path)
+                    response.msg = "Files upload successfully"
+                    response.status = True
+                except Exception as e:
+                    print("TODO: HANDLE FILE UPLOAD EXCEPTION")
+                    response.error = e
+        return response.as_dict()
 
 @model_routes_blueprint.route("/Model/<table_name>", methods = ["DELETE"])
 def perform_delete_action(table_name):
