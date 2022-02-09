@@ -7,6 +7,7 @@ DROP SCHEMA IF exists public CASCADE;
 DROP SCHEMA IF EXISTS attribs CASCADE;
 create schema attribs;
 create schema public;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 create table if not exists attribs."APP_DEFINITION" (
     id serial PRIMARY KEY NOT NULL,
     item_key TEXT not null,
@@ -30,12 +31,12 @@ create table if not exists attribs."SCHEMA_PRIVACY" (
 create table if not exists attribs."MEDIA_RELATIONS" (
     id serial PRIMARY KEY NOT NULL,
     table_name TEXT,
-    table_record_id INTEGER,
-    media_record_id INTEGER
+    table_record_id UUID not null,
+    media_record_id UUID not null
 );
 
 create table if not exists public."media" (
-    id serial PRIMARY KEY NOT NULL,
+    id UUID DEFAULT uuid_generate_v4(),
     upload_date timestamp,
     url TEXT,
     name TEXT,
@@ -45,5 +46,4 @@ create table if not exists public."media" (
 
 GRANT ALL ON SCHEMA attribs TO typefulserver;
 GRANT ALL ON SCHEMA public TO typefulserver;
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 insert into attribs."APP_DEFINITION" (item_key, item_val) VALUES ('APP_INIT','TRUE')

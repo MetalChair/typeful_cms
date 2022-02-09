@@ -155,6 +155,12 @@ def create_file_record(file_name, file):
     )
     return
 
+def attach_media_to_object(table_name, record_id, media_id):
+    cure = run_query(
+        "INSERT INTO attribs.MEDIA_RELATIONS " +
+        "(table_name, table_record_id, media_record_id) VALUES (%s, %s, %s)",
+        [table_name, record_id, media_id]
+    )
 
 
 

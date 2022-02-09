@@ -2,7 +2,7 @@ import os
 from typing import Dict, List, Tuple, Deque
 from flask import Blueprint, request, g, current_app
 from collections import deque
-from sympy import false
+from werkzeug.datastructures import RequestCacheControl
 from werkzeug.utils import secure_filename
 from application.database.database import *
 from application.models.message_reponse import message_response
@@ -226,6 +226,10 @@ def insert_records(schema_list : List[Tuple[str, dict, str]]):
         if fk_table:
             col_val_map[fk_table + "_int_id"] = parent_record_ctxs[0][1]
 
+        #Take our schema object and convert it to a 
+        #dict that is SQL friendly
+        #We explicitly ignore isntances where the child val
+        #in the dict is a dict, and we stringify any lists
         for key in schema:
             val = schema.get(key)
             if type(val) is not dict:
@@ -233,6 +237,8 @@ def insert_records(schema_list : List[Tuple[str, dict, str]]):
                     val = [str(x) for x in val]
                 col_val_map[key] = val
         try:
+            #Form the record insertion query
+            #Explicitly return the id so that we can reference it as the parent record
             cur = run_query(
                 sql.SQL("INSERT INTO {table_name}({cols}) VALUES ({vals}) RETURNING {id} ")
                 .format(
@@ -246,12 +252,15 @@ def insert_records(schema_list : List[Tuple[str, dict, str]]):
                     id = sql.Identifier(table_name + "_int_id")
                 )
             )
+            #Push our newly created ID onto the stack so that 
+            #we can reference it as an FK in our child table
             inserted_id = cur.fetchone()[0]
             if inserted_id:
                 parent_record_ctxs.appendleft(
                     (table_name, inserted_id)
                 )
         except Exception as e:
+            #TODO: This isn't exception handling
             raise e
     return
 
@@ -268,7 +277,7 @@ def update_record(update_model : Dict[str, dict], update_action : str):
                         ) for (name, col_type) in column_list.items()
                     )
                 )
-            cur = run_query(query, [x for (_, x) in column_list.items()])
+            run_query(query, [x for (_, x) in column_list.items()])
         elif update_action == "drop":
             column_list : Dict[str, str] = table_val.get("columns")
             query = sql.SQL("ALTER TABLE {table_name} {add_clauses}").format(
@@ -279,7 +288,7 @@ def update_record(update_model : Dict[str, dict], update_action : str):
                         ) for name in column_list
                     )
                 )
-            cur = run_query(query)
+            run_query(query)
     return
 
 def drop_table(table_name : str):
@@ -312,8 +321,21 @@ def perform_model_action():
         response_object = message_response(False, e_msg= getattr(g, "error", "Unknown Error"))
         return response_object.as_dict()
 
-@model_routes_blueprint.route("/Model/media", methods = ["POST"])
-def perform_media_action():
+@model_routes_blueprint.route("/Model/Media/Upload", methods = ["POST"])
+def perform_media_attach():
+    model = request.get_json()
+    response = message_response(False)
+    if "attach" not in model:
+        response.msg = "Malformed schema, root object just be 'attach'"
+        return response
+    model_type = response["attach"]["record_type"]
+    record_id = response["attach"]["record_id"]
+    media_id = response["attach"]["media_id"]
+    attach_media_to_object(model_type, record_id, media_id)
+        
+    return response
+@model_routes_blueprint.route("/Model/Media", methods = ["POST"])
+def perform_media_upload():
     act_type = DB_ACTION_TYPE.from_post_method(request.method)
     if act_type == DB_ACTION_TYPE.CREATE:
         response = message_response(False)

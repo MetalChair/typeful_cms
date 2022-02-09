@@ -5,10 +5,6 @@ from typing import Deque, List
 from xml.etree.ElementInclude import include
 from attr import attr
 from flask import Blueprint, request, g
-from matplotlib.pyplot import table
-from pandas import read_sql_query
-from pytest import param
-from sympy import false, true
 from application.database.database import *
 from application.models.message_reponse import message_response
 
@@ -107,10 +103,12 @@ def schemify_query_result(cursor: Cursor, table_name : str, attribs : Dict[str, 
     }
     for result in query_result:
         new_dict_item = {}
+        #Zip up results and their respective descriptions
         for prop, desc in zip(result, cursor.description):
             #We need to sort the table names by descending length
             #this prevents an issue where an incorrect match could occur
             #IE. Table named java and javascript, query on java
+            # javascript would match but we actually want to match on java
             sorted_table_names = list(attribs.keys())
             sorted_table_names.sort(key = len, reverse=True)
             for name in sorted_table_names:
@@ -161,8 +159,13 @@ def form_query(
             )
         alias = alias + 1
 
+    #Form join clauses for the table
     join_clauses = []
     for table in includes:
+        #Media inclusions need explicit handling
+        #so we can ignore them here
+        if table is "media":
+            continue     
         if "parent_table" in attribs[table]:
             child_alias = attribs[table]["alias"]
             parent_table = attribs[table]["parent_table"]
@@ -226,7 +229,12 @@ def form_query(
     )
     as_string = query.as_string(get_db_cursor())
 
+    #Return the formed query, as well as the values to be substituted by
+    #EXECUTE(). This performs sql sanitization on the values
     return (query, [x[3] for x in aliased_wheres])
+
+def get_media_includes():
+    return
 
 @row_routes_blueprint.route("/<table_name>", methods = ["GET"])
 def run_posted_query(table_name : str):

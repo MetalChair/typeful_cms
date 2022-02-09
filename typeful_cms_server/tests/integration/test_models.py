@@ -86,6 +86,14 @@ SAMPLE_ADD_MANY_DATA = {
     }
 }
 
+SAMPLE_ATTACH_MEDIA = {
+    "attach" : {
+        "record_type" : "",
+        "record_id" : "",
+        "media_id":  ""
+    }
+}
+
 EXPECTED_COL_TYPE_IDS = {
     "users_int_id" : 23,
     "aliases" : 1009,
@@ -162,7 +170,7 @@ def test_media_upload(test_app : AppContext):
     data =  {}
     data["files[]"] = [file for file in files]
     res = test_app.app.test_client().post(
-        "/Model/media", 
+        "/Model/Media", 
         data = data, 
         content_type = 'multipart/form-data'    
     )
