@@ -86,13 +86,6 @@ SAMPLE_ADD_MANY_DATA = {
     }
 }
 
-SAMPLE_ATTACH_MEDIA = {
-    "attach" : {
-        "record_type" : "",
-        "record_id" : "",
-        "media_id":  ""
-    }
-}
 
 EXPECTED_COL_TYPE_IDS = {
     "users_int_id" : 23,
@@ -177,6 +170,9 @@ def test_media_upload(test_app : AppContext):
     succesful_response_object(json.loads(res.data))
     cur = run_query("SELECT * FROM public.media")
     assert cur.rowcount == 2
+
+def test_media_attach():
+    return
 
 def test_typings_on_creation(test_app):
     #arrange
